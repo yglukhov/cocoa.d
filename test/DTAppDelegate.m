@@ -1,11 +1,3 @@
-//
-//  DTAppDelegate.m
-//  dtest2
-//
-//  Created by Yuriy Glukhov on 4/8/14.
-//  Copyright (c) 2014 Zeo. All rights reserved.
-//
-
 #import "DTAppDelegate.h"
 
 extern NSString* testFunc();
@@ -16,14 +8,29 @@ extern NSString* testFunc();
 
 @end
 
+@interface DView : NSView
+
+- (void) testMethod:(NSRect) rect andArg: (int) a;
+
+@end
+
 @implementation DTAppDelegate
 
-- (void)applicationDidFinishLaunching:(NSNotification *)aNotification
+- (void) testExternalDFunction
 {
 	AppDelegate* d = [[NSClassFromString(@"AppDelegate") alloc] init];
 	[d doSomething];
-	NSLog(@"%@", testFunc());
+
+	NSString* str = testFunc();
+	NSAssert([str isEqualToString: @"Hello, World!"], @"Something wrong");
+}
+
+- (void)applicationDidFinishLaunching:(NSNotification *)aNotification
+{
+	[self testExternalDFunction];
 	// Insert code here to initialize your application
+
+	[(DView*)self.dView testMethod: NSMakeRect(1.24, 5, 6, 7) andArg: 5];
 }
 
 @end

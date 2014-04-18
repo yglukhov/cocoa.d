@@ -11,5 +11,4 @@ extern (C) void* testFunc()
 	return result;
 }
 
-
 });

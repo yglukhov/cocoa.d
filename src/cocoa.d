@@ -8,11 +8,12 @@ public import std.traits;
 import std.conv;
 import std.variant;
 import std.ascii;
-import std.regex;
 import core.stdc.string;
 import core.stdc.config;
 import core.memory;
 import std.range;
+import std.c.stdlib;
+import core.vararg;
 
 pragma(lib, "objc");
 
@@ -69,13 +70,21 @@ enum {
 	void* objc_getAssociatedObject(CFTypeRef object, void *key);
 
 	SEL sel_registerName(const char *str);
+	const char* sel_getName(SEL aSelector);
+
 	_ObjCClass objc_getClass(const char *name);
 	_ObjCClass object_getClass(CFTypeRef object);
 	void *object_getIndexedIvars(CFTypeRef obj);
 
 	Method class_getInstanceMethod(_ObjCClass aClass, SEL aSelector);
+	const char * class_getName(_ObjCClass cls);
 	BOOL class_addMethod(_ObjCClass cls, SEL name, IMP imp, const char *types);
 	BOOL class_addIvar(Class cls, const char *name, size_t size, uint8_t alignment, const char *types);
+	Method * class_copyMethodList(Class cls, uint *outCount);
+
+	CFTypeRef class_createInstance(Class cls, size_t extraBytes);
+
+	SEL method_getName(Method method);
 	const char * method_getTypeEncoding(Method method);
 
 	_ObjCClass objc_allocateClassPair(_ObjCClass superclass, const char *name, size_t extraBytes);
@@ -93,28 +102,31 @@ template MacFrameworkWithPath(string path)
 			foreach(m; __traits(derivedMembers, typeof(this)))
 			{
 				mixin("alias _m = " ~ m ~ ";");
-				static if (m != "_load" && std.traits.isPointer!(typeof(_m)))
+				static if (__traits(compiles, typeof(_m)))
 				{
-					static if (std.traits.isFunctionPointer!(_m))
+					static if (m != "_load" && std.traits.isPointer!(typeof(_m)))
 					{
-						static assert(std.traits.functionLinkage!(_m) == "C", m ~ " is not defined to be extern(C)");
-						static if (m.startsWith("_"))
+						static if (std.traits.isFunctionPointer!(_m))
 						{
-							auto newM = m[1 .. $];
+							static assert(std.traits.functionLinkage!(_m) == "C", m ~ " is not defined to be extern(C)");
+							static if (m.startsWith("_"))
+							{
+								auto newM = m[1 .. $];
+							}
+							else
+							{
+								auto newM = m;
+							}
+							_m = cast(typeof(_m)) dlsym(dl, cast(const char*)newM);
+							if (char* error = dlerror())
+								writefln("dlsym error(%s): %s", newM, error);
 						}
-						else
+						else static if(__traits(getProtection, _m) == "public")
 						{
-							auto newM = m;
+							_m = *(cast(typeof(_m)*) dlsym(dl, m));
+							if (char* error = dlerror())
+								writefln("dlsym error(%s): %s", m, error);
 						}
-						_m = cast(typeof(_m)) dlsym(dl, cast(const char*)newM);
-						if (char* error = dlerror())
-							writefln("dlsym error(%s): %s", newM, error);
-					}
-					else static if(__traits(getProtection, _m) == "public")
-					{
-						_m = *(cast(typeof(_m)*) dlsym(dl, m));
-						if (char* error = dlerror())
-							writefln("dlsym error(%s): %s", m, error);
 					}
 				}
 			}
@@ -175,6 +187,33 @@ extern (C) class Cocoa
 {
 	mixin MacFramework;
 
+	version(X86_64)
+		alias CGFloat = double;
+	else
+		alias CGFloat = float;
+
+	align(1) struct CGPoint
+	{
+		CGFloat x;
+		CGFloat y;
+	}
+
+	align(1) struct CGSize
+	{
+		CGFloat width;
+		CGFloat height;
+	}
+
+	align(1) struct CGRect
+	{
+		CGPoint origin;
+		CGSize size;
+	}
+
+	alias NSPoint = CGPoint;
+	alias NSSize = CGSize;
+	alias NSRect = CGRect;
+
 	shared static void function(CFTypeRef obj, ...) NSLog;
 
 	shared private static int function(int argc, const char** argv) NSApplicationMain;
@@ -185,17 +224,10 @@ extern (C) class Cocoa
 	}
 }
 
-extern (C) class TestFramework
-{
-	mixin MacFrameworkWithPath!("/Users/yglukhov/Library/Developer/Xcode/DerivedData/testFramework-eehghotsfhwemhhgbwgqwttzqqsa/Build/Products/Debug/testFramework.framework/testFramework");
-
-	shared static CFStringRef function(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding) ZBStringCreateWithCString;
-}
-
 alias InitFunc = _ObjCClass function();
 
-InitFunc[string] _gUnboundClasses;
-InitFunc[string] _gUnregisteredClasses;
+private InitFunc[string] _gUnboundClasses;
+private InitFunc[string] _gUnregisteredClasses;
 
 private void bindUnboundClasses()
 {
@@ -378,7 +410,7 @@ struct ObjCBase(T)
 	}
 
 	RetType s(string name, RetType, Args...)(Args args)
-		if (isIntegral!RetType || isSomeChar!RetType || isPointer!RetType)
+		if (isIntegral!RetType || isSomeChar!RetType || isPointer!RetType || is(RetType == void))
 	{
 		static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
 		mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType).f(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
@@ -637,11 +669,22 @@ class Expression
 				}
 			}
 		}
+
+		// Deduce type of target
+		if (_target.containsOnlyTag())
+		{
+			Expression targetExpr = exprs[_target.tagInString()];
+			if (targetExpr._retType is null)
+			{
+				targetExpr._retType = "id";
+			}
+		}
 	}
 
 	string eval(Expression[] exprs) pure
 	{
-		string result = "(" ~ _target ~ `).s!("` ~ _selector ~ `", (` ~ _retType ~"))(";
+		assert(_retType.length);
+		string result = "(" ~ _target ~ `).s!("` ~ _selector ~ `", ` ~ _retType ~")(";
 		result ~= _arguments.join(",");
 		result ~= ")";
 		return result;
@@ -729,7 +772,7 @@ string[] assignmentTypesFromString(string s, uint uniqueCounter) pure
 string castTypeFromString(string s) pure
 {
 	string res = s.strip();
-	if (res[$ - 1] == ')')
+	if (res.length && res[$ - 1] == ')')
 	{
 		long openingParen = s.lastIndexOf("(");
 		res = s[openingParen .. $];
@@ -790,7 +833,12 @@ string convertObjcToD(string objcCode) pure
 					{
 						line = assignmentTypes[0] ~ line;
 					}
+					assert(assignmentTypes[1].length);
 					exprs[line.tagInString()]._retType = assignmentTypes[1];
+				}
+				else
+				{
+					assert(false, line);
 				}
 			}
 			line = evalLine(line, exprs);
@@ -871,10 +919,16 @@ class _ObjcClass(string className) : _ObjcBase
 
 	private static _ObjCClass bindObjcClass()
 	{
+	//	writeln("Trying to bind class: ", className);
+
 		_objcClass.mObj = objc_getClass(className.toStringz());
 		if (_objcClass.mObj is null)
 		{
 			_gUnboundClasses[className] = &bindObjcClass;
+		}
+		else
+		{
+		//	writeln("Class bound: ", className);
 		}
 		return _objcClass.mObj;
 	}
@@ -907,31 +961,24 @@ class _ObjcClass(string className) : _ObjcBase
 	}
 }
 
-class B : ObjC.NSObject
-{
-	mixin RegisterObjCClass;
+// private extern (C) CFTypeRef _initImpl(T)(CFTypeRef o, SEL m, ...)
+// {
+// 	writeln("Constructing: ", class_getName(object_getClass(o)));
+// 	associateObjCProxyToDObject(o, new T());
+// 	return o;
+// }
 
-	void doSomething()
-	{
-		writeln("doSomething");
-	}
+
+CFTypeRef allocObjCObjectAsProxyToD(_ObjCClass isa, _ObjcBase realObj)
+{
+	CFTypeRef result = class_createInstance(isa, realObj.sizeof);
+	associateObjCProxyToDObject(result, realObj);
+	return result;
 }
 
-class SomeOtherClass : ObjC.NSArray
+private extern (C) CFTypeRef _allocImpl(T)(CFTypeRef o, SEL m, CFTypeRef zone)
 {
-	mixin RegisterObjCClass;
-
-}
-
-class Class3 : SomeOtherClass
-{
-
-}
-
-private extern (C) CFTypeRef _initImpl(T)(CFTypeRef o, SEL m)
-{
-	associateObjCProxyToDObject(o, new T());
-	return o;
+	return allocObjCObjectAsProxyToD(T.c.mObj, new T());
 }
 
 void associateObjCProxyToDObject(CFTypeRef objcObj, _ObjcBase dObj)
@@ -945,17 +992,13 @@ void associateObjCProxyToDObject(CFTypeRef objcObj, _ObjcBase dObj)
 
 private void* dObjectAssociatedWithObjCProxy(CFTypeRef objcObj)
 {
-	return *(cast(void**)object_getIndexedIvars(objcObj));
-}
-
-private extern (C) CFTypeRef _initDProxyImpl(CFTypeRef o, SEL m)
-{
-	return o;
+	void** adjuscentBytes = cast(void**)object_getIndexedIvars(objcObj);
+	assert(adjuscentBytes !is null);
+	return *adjuscentBytes;
 }
 
 private extern (C) void _deallocImpl(T)(CFTypeRef o, SEL m)
 {
-	writeln("DEALLOC CALLED");
 	T impl = cast(T)dObjectAssociatedWithObjCProxy(o);
 	impl._obj.mObj = null;
 	GC.removeRoot(cast(void*)impl);
@@ -963,8 +1006,9 @@ private extern (C) void _deallocImpl(T)(CFTypeRef o, SEL m)
 
 private extern (C) auto _methodForwarder(T, string Func, Args...)(CFTypeRef o, SEL m, Args args)
 {
-	auto p = cast(void**)object_getIndexedIvars(o);
-	T obj = cast(T)*p;
+//	writeln("Forwarding call ", Func);
+	T obj = cast(T)dObjectAssociatedWithObjCProxy(o);
+//	writeln("Ok, calling now! ", cast(void*)obj);
 	mixin("return obj." ~ Func ~ "(args);");
 }
 
@@ -982,8 +1026,7 @@ _ObjCClass _registerObjcClass(This, Super)()
 	_ObjCClass result = objc_allocateClassPair(superClass, thisName.toStringz(), This.sizeof);
 	assert(result !is null);
 
-	class_addMethod(result, ObjCSelector!"init".selector, cast(IMP)&(_initImpl!This), "v@:".ptr);
-	class_addMethod(result, ObjCSelector!"initDProxy".selector, cast(IMP)&_initDProxyImpl, "v@:".ptr);
+	class_addMethod(object_getClass(result), ObjCSelector!"allocWithZone_".selector, cast(IMP)&(_allocImpl!This), "v@:".ptr);
 	class_addMethod(result, ObjCSelector!"dealloc".selector, cast(IMP)&(_deallocImpl!This), "v@:".ptr);
 
 	foreach(m; __traits(derivedMembers, This))
@@ -991,7 +1034,7 @@ _ObjCClass _registerObjcClass(This, Super)()
 		mixin("alias _m = This." ~ m ~ ";");
 		static if (__traits(getProtection, _m) == "public")
 		{
-			static if (isCallable!(_m))
+			static if (isCallable!(_m) && m != "objcClass")
 			{
 				class_addMethod(result, ObjCSelector!m.selector, cast(IMP)&(_methodForwarder!(This, m, ParameterTypeTuple!_m)), "v@:".ptr);
 			}
@@ -999,6 +1042,7 @@ _ObjCClass _registerObjcClass(This, Super)()
 	}
 
 	objc_registerClassPair(result);
+	//writeln("Class registered: ", This.stringof);
 	return result;
 }
 
@@ -1006,6 +1050,7 @@ mixin template RegisterObjCClass()
 {
 	private static _ObjCClass registerObjcClass()
 	{
+//		writeln("Trying to register class:", typeof(this).stringof);
 		return _objcClass.mObj = _registerObjcClass!(typeof(this), typeof(super))();
 	}
 
@@ -1021,9 +1066,7 @@ mixin template RegisterObjCClass()
 
 	protected override CFTypeRef _createObjcObject()
 	{
-		CFTypeRef result = c.s!("alloc", id)().s!("initDProxy", CFTypeRef)();
-		associateObjCProxyToDObject(result, this);
-		return result;
+		return allocObjCObjectAsProxyToD(_objcClass.mObj, this);
 	}
 
 	__gshared static ObjCBase!_ObjCClass _objcClass;
@@ -1038,6 +1081,16 @@ unittest
 	assert(length == "Hello, world!".length);
 }
 
+version (unittest)
+{
+	extern (C) class TestFramework
+	{
+		mixin MacFrameworkWithPath!("/Users/yglukhov/Library/Developer/Xcode/DerivedData/testFramework-eehghotsfhwemhhgbwgqwttzqqsa/Build/Products/Debug/testFramework.framework/testFramework");
+
+		shared static CFStringRef function(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding) ZBStringCreateWithCString;
+	}
+}
+
 unittest
 {
 	ObjC.testFramework fr = ObjC.testFramework.c.s!("alloc", ObjC.testFramework)().s!("init", ObjC.testFramework)();
@@ -1046,11 +1099,27 @@ unittest
 unittest
 {
 	mixin(_ObjC!q{
-
 		ObjC.NSArray arr = [ObjC.NSArray.c arrayWithObjects: "Hello", "world!", null];
 		ObjC.NSString str = [arr componentsJoinedByString: ", "];
 		uint length = [str length];
 		assert(length == "Hello, world!".length);
-
 	});
+
+	void TheFollowingCodeDoesNotNeedToRunJustEnsureItCompiles()
+	{
+		mixin(_ObjC!q{
+		[[ObjC.NSColor.c redColor] set];
+		});
+	}
+}
+
+version(unittest) class Test : ObjC.NSObject
+{
+	mixin RegisterObjCClass;
+}
+
+
+unittest
+{
+writeln("UNITTEST RUNNING!");
 }

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7B35710F18FFC5D700610ACF /* DView.d in Sources */ = {isa = PBXBuildFile; fileRef = 7B35710E18FFC5D700610ACF /* DView.d */; };
+		7B3571121901440200610ACF /* OView.m in Sources */ = {isa = PBXBuildFile; fileRef = 7B3571111901440200610ACF /* OView.m */; };
 		7BFA921418F3F3550028D67B /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7BFA921318F3F3550028D67B /* Cocoa.framework */; };
 		7BFA921E18F3F3550028D67B /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7BFA921C18F3F3550028D67B /* InfoPlist.strings */; };
 		7BFA922018F3F3550028D67B /* main.d in Sources */ = {isa = PBXBuildFile; fileRef = 7BFA921F18F3F3550028D67B /* main.d */; };
@@ -29,13 +31,17 @@
 			fileType = pattern.proxy;
 			isEditable = 1;
 			outputFiles = (
+				"$(DERIVED_FILE_DIR)/_dummy_file_to_always_rebuild._",
 				"$(DERIVED_FILE_DIR)/$(INPUT_FILE_NAME).o",
 			);
-			script = "echo \"Compiling $INPUT_FILE_NAME\"\n\necho cd \"$INPUT_FILE_DIR\"\ncd \"$INPUT_FILE_DIR\"\nrm -f \"$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\"\necho /opt/local/bin/dmd -debug -c $D_SEARCH_PATHS \"-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\" \"$INPUT_FILE_NAME\"\n/opt/local/bin/dmd -debug -c $D_SEARCH_PATHS \"-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\" \"$INPUT_FILE_NAME\"\n#touch \"$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\"";
+			script = "cd \"$INPUT_FILE_DIR\"\n\nD_CONFIGURATION=-release\nD_UNITTESTS=\nif [ \"$CONFIGURATION\" = \"Debug\" ]\nthen\n    D_CONFIGURATION=-debug\n    D_UNITTESTS=-unittest\nfi\n\nCOMMAND=$(cat << EOF\n/opt/local/bin/dmd $D_CONFIGURATION $D_UNITTESTS -c $D_SEARCH_PATHS \"-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\" \"$INPUT_FILE_NAME\"\nEOF\n)\n\n#COMMAND=\"/opt/local/bin/dmd -debug -c $D_SEARCH_PATHS '-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o' '$INPUT_FILE_NAME'\"\necho $COMMAND\neval $COMMAND\n#/opt/local/bin/dmd -debug -c $D_SEARCH_PATHS \"-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\" \"$INPUT_FILE_NAME\"\n#touch \"$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\"\n#touch \"$INPUT_FILE_NAME\"\n";
 		};
 /* End PBXBuildRule section */
 
 /* Begin PBXFileReference section */
+		7B35710E18FFC5D700610ACF /* DView.d */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.dtrace; path = DView.d; sourceTree = "<group>"; };
+		7B3571101901440200610ACF /* OView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OView.h; sourceTree = "<group>"; };
+		7B3571111901440200610ACF /* OView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OView.m; sourceTree = "<group>"; };
 		7BFA921018F3F3550028D67B /* testApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = testApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7BFA921318F3F3550028D67B /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		7BFA921B18F3F3550028D67B /* testApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "testApp-Info.plist"; sourceTree = "<group>"; };
@@ -104,7 +110,10 @@
 				7BFA924718F3F36E0028D67B /* Test.d */,
 				7BFA924F18F3FAA70028D67B /* cocoa.d */,
 				7BFA925118F3FF900028D67B /* AppDelegate.d */,
+				7B35710E18FFC5D700610ACF /* DView.d */,
 				7BFA921A18F3F3550028D67B /* Supporting Files */,
+				7B3571101901440200610ACF /* OView.h */,
+				7B3571111901440200610ACF /* OView.m */,
 			);
 			name = src;
 			sourceTree = SOURCE_ROOT;
@@ -188,8 +197,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7B35710F18FFC5D700610ACF /* DView.d in Sources */,
 				7BFA924818F3F36E0028D67B /* Test.d in Sources */,
 				7BFA922718F3F3550028D67B /* DTAppDelegate.m in Sources */,
+				7B3571121901440200610ACF /* OView.m in Sources */,
 				7BFA925218F3FF900028D67B /* AppDelegate.d in Sources */,
 				7BFA925018F3FAA70028D67B /* cocoa.d in Sources */,
 				7BFA922018F3F3550028D67B /* main.d in Sources */,
@@ -282,7 +293,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_NS_ASSERTIONS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -291,6 +302,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				LLVM_LTO = YES;
 				MACOSX_DEPLOYMENT_TARGET = 10.9;
 				SDKROOT = macosx;
 			};

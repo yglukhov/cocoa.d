@@ -8,12 +8,17 @@ class AppDelegate : ObjC.NSObject
 
 	this()
 	{
-		writeln("AppDelegate::ctor");
+		writeln(__FUNCTION__);
+	}
+
+	~this()
+	{
+		writeln(__FUNCTION__);
 	}
 
 	void applicationDidFinishLaunching_(id notification)
 	{
-		writeln("applicationDidFinishLaunching_123");
+		writeln("applicationDidFinishLaunching");
 	}
 
 	void doSomething()
