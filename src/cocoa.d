@@ -585,7 +585,7 @@ unittest
 	assert(StringWithCFString(s1._base.mObj) == ":hi:");
 }
 
-bool containsOnlyTag(string str) pure
+private bool containsOnlyTag(string str) pure
 {
 	str = str.strip();
 	return str.startsWith("${") && str.endsWith("}") && str[2 .. $ - 1].isNumeric();
@@ -594,7 +594,7 @@ bool containsOnlyTag(string str) pure
 static assert(" ${123}   ".containsOnlyTag());
 static assert(!" ${123} d ".containsOnlyTag());
 
-int[] tagsInString(string str) pure
+private int[] tagsInString(string str) pure
 {
 	int[] res;
 	int tag = str.tagInString();
@@ -607,7 +607,7 @@ int[] tagsInString(string str) pure
 	return res;
 }
 
-int tagInString(string str) pure
+private int tagInString(string str) pure
 {
 	long begin = str.indexOf("${");
 	if (begin != -1)
@@ -620,7 +620,7 @@ int tagInString(string str) pure
 
 static assert(tagInString("123 ${12} sdf") == 12);
 
-string replaceTagInString(string source, int tag, string replacement) pure
+private string replaceTagInString(string source, int tag, string replacement) pure
 {
 	return source.replace("${" ~ to!string(tag) ~ "}", replacement);
 }
@@ -628,7 +628,7 @@ string replaceTagInString(string source, int tag, string replacement) pure
 static assert("asd ${123} 456".replaceTagInString(123, "qwe") == "asd qwe 456");
 static assert("asd ${123} ${456}".replaceTagInString(456, "qwe") == "asd ${123} qwe");
 
-class Expression
+private class Expression
 {
 	this(string dCall, Expression[] exprs) pure
 	{
@@ -700,12 +700,12 @@ class Expression
 	string _retType;
 }
 
-string lastWordInString(string s) pure
+private string lastWordInString(string s) pure
 {
 	return s.split!(a => !isAlphaNum(a))()[$ - 1];
 }
 
-string evalLine(string line, Expression[] exprs) pure
+private string evalLine(string line, Expression[] exprs) pure
 {
 	while(true)
 	{
@@ -724,35 +724,33 @@ string evalLine(string line, Expression[] exprs) pure
 	return line;
 }
 
-string[] assignmentTypesFromString(string s, string unique) pure
+private string assignmentTypeFromString(string s) pure
 {
-	string[] result;
 	s = s.strip();
 	if (s.length == 0)
 	{
-		result ~= "";
-		result ~= "void";
+		return "void";
 	}
 	else
 	{
-		string typeAlias = "TheType" ~ unique;
-		result ~= `
-			static if (__traits(compiles, mixin("(delegate void() { struct _test` ~ unique ~ ` { ` ~ s ~ `; }})()")))
+		return `ReturnType!(
+			delegate ()
 			{
-				mixin("struct _test` ~ unique ~ ` {` ~ s ~ `; }");
-				alias ` ~ typeAlias ~ ` = FieldTypeTuple!_test` ~ unique ~ `[0];
+				static if (__traits(compiles, mixin("delegate void(){ struct _t { ` ~ s ~ `; }}()")))
+				{
+					mixin("struct _t { ` ~ s ~ `; }");
+					return FieldTypeTuple!_t[0].init;
+				}
+				else
+				{
+					mixin("return(` ~ s ~ `);");
+				}
 			}
-			else
-			{
-				mixin("alias ` ~ typeAlias ~ ` = typeof(` ~ s ~ `);");
-			}`;
-		result ~= typeAlias;
+		)`;
 	}
-	return result;
 }
 
-
-string castTypeFromString(string s) pure
+private string castTypeFromString(string s) pure
 {
 	string res = s.strip();
 	if (res.length && res.endsWith(")"))
@@ -770,11 +768,9 @@ string castTypeFromString(string s) pure
 static assert(castTypeFromString("asdf (int)") == "(int)");
 static assert(castTypeFromString("asdf (int) 1234") == "");
 
-string convertObjcToD(string objcCode, uint uniqueId = __LINE__) pure
+string convertObjcToD(string objcCode) pure
 {
 	string result = "";
-	string uniqueStrPrefix = "_ObjcToD_unique_id_" ~ to!string(uniqueId) ~ "_";
-	uint uniqueCounter = 1;
 	foreach (line; objcCode.splitter(";")) if (line.length)
 	{
 		long openingBracket = line.lastIndexOf("[");
@@ -812,13 +808,7 @@ string convertObjcToD(string objcCode, uint uniqueId = __LINE__) pure
 				long assignment = line.indexOf("=");
 				if (assignment != -1)
 				{
-					string[] assignmentTypes = assignmentTypesFromString(line[0 .. assignment], uniqueStrPrefix ~ to!string(uniqueCounter));
-					if (assignmentTypes[0].length)
-					{
-						line = assignmentTypes[0] ~ line;
-					}
-					assert(assignmentTypes[1].length);
-					exprs[line.tagInString()]._retType = assignmentTypes[1];
+					exprs[line.tagInString()]._retType = assignmentTypeFromString(line[0 .. assignment]);
 				}
 				else
 				{
@@ -829,15 +819,14 @@ string convertObjcToD(string objcCode, uint uniqueId = __LINE__) pure
 		}
 
 		result ~= line ~ ";";
-		++uniqueCounter;
 	}
 
 	return result;
 }
 
-template _ObjC(string s, uint uniqueId = __LINE__)
+template _ObjC(string s)
 {
-	enum _ObjC = convertObjcToD(s, uniqueId);
+	enum _ObjC = convertObjcToD(s);
 }
 
 alias id = ObjCObj;
@@ -847,7 +836,7 @@ bool isChildOfClass(ClassInfo child, ClassInfo parent) @safe nothrow pure
 	return child.base && (child.base is parent || child.base.isChildOfClass(parent));
 }
 
-class _ObjcBase
+private class _ObjcBase
 {
 	private ObjCBase!CFTypeRef _obj;
 
@@ -944,14 +933,6 @@ class _ObjcClass(string className) : _ObjcBase
 		return _objcClass;
 	}
 }
-
-// private extern (C) CFTypeRef _initImpl(T)(CFTypeRef o, SEL m, ...)
-// {
-// 	writeln("Constructing: ", class_getName(object_getClass(o)));
-// 	associateObjCProxyToDObject(o, new T());
-// 	return o;
-// }
-
 
 CFTypeRef allocObjCObjectAsProxyToD(_ObjCClass isa, _ObjcBase realObj)
 {
