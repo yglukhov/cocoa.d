@@ -15,6 +15,7 @@ import std.range;
 import std.c.stdlib;
 import core.vararg;
 
+
 pragma(lib, "objc");
 
 extern (C)
@@ -362,7 +363,7 @@ struct Dobjc_msgSend(RetType)
 	{
 		f = cast(typeof(f))&objc_msgSend;
 	}
-	static extern (C) RetType function (CFTypeRef obj, SEL sel, ...) f;
+	__gshared static extern (C) RetType function (CFTypeRef obj, SEL sel, ...) f;
 }
 
 struct ObjCBase(T)
@@ -417,7 +418,7 @@ struct ObjCBase(T)
 	}
 
 	//RetType s(string name, RetType, Args...)(Args args)
-	//	if (isFloatingPoint!RetType)
+	//	if (ivertobjcsFloatingPoint!RetType)
 	//{
 	//	static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
 	//	mixin(expandConvertedArgs("void* result = objc_msgSend(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
@@ -624,6 +625,9 @@ string replaceTagInString(string source, int tag, string replacement) pure
 	return source.replace("${" ~ to!string(tag) ~ "}", replacement);
 }
 
+static assert("asd ${123} 456".replaceTagInString(123, "qwe") == "asd qwe 456");
+static assert("asd ${123} ${456}".replaceTagInString(456, "qwe") == "asd ${123} qwe");
+
 class Expression
 {
 	this(string dCall, Expression[] exprs) pure
@@ -720,23 +724,7 @@ string evalLine(string line, Expression[] exprs) pure
 	return line;
 }
 
-string assignmentTypeFromString(string s) pure
-{
-	s = s.strip();
-	if (s.indexOf(".") != -1) return "typeof(" ~ s ~ ")";
-
-	if (s.length == 0) return "void";
-
-	string word = s.lastWordInString();
-	if (word.length == s.length)
-	{
-		return "typeof(" ~ word ~ ")";
-	}
-
-	return s[0 .. $ - word.length];
-}
-
-string[] assignmentTypesFromString(string s, uint uniqueCounter) pure
+string[] assignmentTypesFromString(string s, string unique) pure
 {
 	string[] result;
 	s = s.strip();
@@ -747,16 +735,11 @@ string[] assignmentTypesFromString(string s, uint uniqueCounter) pure
 	}
 	else
 	{
-		string unique = to!string(uniqueCounter);
 		string typeAlias = "TheType" ~ unique;
 		result ~= `
-			static if (__traits(compiles, (delegate void() { struct _test` ~ unique ~ ` { ` ~ s ~ `; }})()))
+			static if (__traits(compiles, mixin("(delegate void() { struct _test` ~ unique ~ ` { ` ~ s ~ `; }})()")))
 			{
-				struct _test` ~ unique ~`
-				{
-					` ~ s ~ `;
-				}
-
+				mixin("struct _test` ~ unique ~ ` {` ~ s ~ `; }");
 				alias ` ~ typeAlias ~ ` = FieldTypeTuple!_test` ~ unique ~ `[0];
 			}
 			else
@@ -772,7 +755,7 @@ string[] assignmentTypesFromString(string s, uint uniqueCounter) pure
 string castTypeFromString(string s) pure
 {
 	string res = s.strip();
-	if (res.length && res[$ - 1] == ')')
+	if (res.length && res.endsWith(")"))
 	{
 		long openingParen = s.lastIndexOf("(");
 		res = s[openingParen .. $];
@@ -787,9 +770,10 @@ string castTypeFromString(string s) pure
 static assert(castTypeFromString("asdf (int)") == "(int)");
 static assert(castTypeFromString("asdf (int) 1234") == "");
 
-string convertObjcToD(string objcCode) pure
+string convertObjcToD(string objcCode, uint uniqueId = __LINE__) pure
 {
 	string result = "";
+	string uniqueStrPrefix = "_ObjcToD_unique_id_" ~ to!string(uniqueId) ~ "_";
 	uint uniqueCounter = 1;
 	foreach (line; objcCode.splitter(";")) if (line.length)
 	{
@@ -828,7 +812,7 @@ string convertObjcToD(string objcCode) pure
 				long assignment = line.indexOf("=");
 				if (assignment != -1)
 				{
-					string[] assignmentTypes = assignmentTypesFromString(line[0 .. assignment], uniqueCounter);
+					string[] assignmentTypes = assignmentTypesFromString(line[0 .. assignment], uniqueStrPrefix ~ to!string(uniqueCounter));
 					if (assignmentTypes[0].length)
 					{
 						line = assignmentTypes[0] ~ line;
@@ -851,9 +835,9 @@ string convertObjcToD(string objcCode) pure
 	return result;
 }
 
-template _ObjC(string s)
+template _ObjC(string s, uint uniqueId = __LINE__)
 {
-	enum _ObjC = convertObjcToD(s);
+	enum _ObjC = convertObjcToD(s, uniqueId);
 }
 
 alias id = ObjCObj;
@@ -1034,7 +1018,7 @@ _ObjCClass _registerObjcClass(This, Super)()
 		mixin("alias _m = This." ~ m ~ ";");
 		static if (__traits(getProtection, _m) == "public")
 		{
-			static if (isCallable!(_m) && m != "objcClass")
+			static if (isCallable!(_m) && !__traits(isStaticFunction, _m) && m != "objcClass" && m != "__ctor" && m != "__dtor")
 			{
 				class_addMethod(result, ObjCSelector!m.selector, cast(IMP)&(_methodForwarder!(This, m, ParameterTypeTuple!_m)), "v@:".ptr);
 			}
@@ -1081,27 +1065,24 @@ unittest
 	assert(length == "Hello, world!".length);
 }
 
-version (unittest)
-{
-	extern (C) class TestFramework
-	{
-		mixin MacFrameworkWithPath!("/Users/yglukhov/Library/Developer/Xcode/DerivedData/testFramework-eehghotsfhwemhhgbwgqwttzqqsa/Build/Products/Debug/testFramework.framework/testFramework");
-
-		shared static CFStringRef function(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding) ZBStringCreateWithCString;
-	}
-}
-
-unittest
-{
-	ObjC.testFramework fr = ObjC.testFramework.c.s!("alloc", ObjC.testFramework)().s!("init", ObjC.testFramework)();
-}
-
 unittest
 {
 	mixin(_ObjC!q{
 		ObjC.NSArray arr = [ObjC.NSArray.c arrayWithObjects: "Hello", "world!", null];
 		ObjC.NSString str = [arr componentsJoinedByString: ", "];
 		uint length = [str length];
+		assert(length == "Hello, world!".length);
+		length = [str length];
+		assert(length == "Hello, world!".length);
+	});
+
+	mixin(_ObjC!q{
+		length = [str length];
+		assert(length == "Hello, world!".length);
+	});
+
+	mixin(_ObjC!q{
+		length = [str length];
 		assert(length == "Hello, world!".length);
 	});
 
@@ -1116,10 +1097,4 @@ unittest
 version(unittest) class Test : ObjC.NSObject
 {
 	mixin RegisterObjCClass;
-}
-
-
-unittest
-{
-writeln("UNITTEST RUNNING!");
 }

@@ -671,20 +671,54 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="480" height="360"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1418"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1280" height="778"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="480" height="360"/>
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
-                    <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="dkp-pM-5Pg" customClass="DView">
-                        <rect key="frame" x="20" y="20" width="170" height="320"/>
+                    <customView translatesAutoresizingMaskIntoConstraints="NO" id="dkp-pM-5Pg" customClass="DView">
+                        <rect key="frame" x="20" y="184" width="216" height="156"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     </customView>
-                    <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Vx2-Ml-7jO" customClass="OView">
-                        <rect key="frame" x="297" y="20" width="163" height="320"/>
+                    <customView translatesAutoresizingMaskIntoConstraints="NO" id="Vx2-Ml-7jO" customClass="OView">
+                        <rect key="frame" x="244" y="184" width="216" height="156"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                    </customView>
+                    <customView translatesAutoresizingMaskIntoConstraints="NO" id="LOP-oM-env" customClass="OView">
+                        <rect key="frame" x="20" y="20" width="216" height="156"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                    </customView>
+                    <customView translatesAutoresizingMaskIntoConstraints="NO" id="bDD-cv-UMd" customClass="DView">
+                        <rect key="frame" x="244" y="20" width="216" height="156"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     </customView>
                 </subviews>
+                <constraints>
+                    <constraint firstItem="dkp-pM-5Pg" firstAttribute="height" secondItem="Vx2-Ml-7jO" secondAttribute="height" id="Ac2-fs-EOE"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="height" secondItem="Vx2-Ml-7jO" secondAttribute="height" id="GwZ-Qg-es9"/>
+                    <constraint firstAttribute="trailing" secondItem="Vx2-Ml-7jO" secondAttribute="trailing" constant="20" id="Hhd-ut-J5W"/>
+                    <constraint firstAttribute="bottom" secondItem="bDD-cv-UMd" secondAttribute="bottom" constant="20" id="Hya-Nm-o86"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="width" secondItem="Vx2-Ml-7jO" secondAttribute="width" id="KXG-3i-WG6"/>
+                    <constraint firstItem="dkp-pM-5Pg" firstAttribute="width" secondItem="Vx2-Ml-7jO" secondAttribute="width" id="LQS-MC-yjc"/>
+                    <constraint firstItem="LOP-oM-env" firstAttribute="leading" secondItem="EiT-Mj-1SZ" secondAttribute="leading" constant="20" id="MvG-3R-ruH"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="width" secondItem="dkp-pM-5Pg" secondAttribute="width" id="NQC-KP-WJs"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="leading" secondItem="LOP-oM-env" secondAttribute="trailing" constant="8" id="PAZ-tR-NTz"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="height" secondItem="LOP-oM-env" secondAttribute="height" id="Pkn-ds-3ge"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="height" secondItem="LOP-oM-env" secondAttribute="height" id="Qdx-b0-loP"/>
+                    <constraint firstItem="dkp-pM-5Pg" firstAttribute="top" secondItem="EiT-Mj-1SZ" secondAttribute="top" constant="20" id="Wo4-cj-dHD"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="height" secondItem="dkp-pM-5Pg" secondAttribute="height" id="XbP-y5-OzA"/>
+                    <constraint firstItem="dkp-pM-5Pg" firstAttribute="leading" secondItem="EiT-Mj-1SZ" secondAttribute="leading" constant="20" id="YU6-su-wGX"/>
+                    <constraint firstItem="LOP-oM-env" firstAttribute="top" secondItem="dkp-pM-5Pg" secondAttribute="bottom" constant="8" id="ZgO-cg-hTJ"/>
+                    <constraint firstAttribute="trailing" secondItem="bDD-cv-UMd" secondAttribute="trailing" constant="20" id="Zxo-qJ-egj"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="top" secondItem="Vx2-Ml-7jO" secondAttribute="bottom" constant="8" id="hTZ-4F-ihc"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="height" secondItem="Vx2-Ml-7jO" secondAttribute="height" id="hdp-f6-wWb"/>
+                    <constraint firstItem="Vx2-Ml-7jO" firstAttribute="top" secondItem="EiT-Mj-1SZ" secondAttribute="top" constant="20" id="iie-2E-ATL"/>
+                    <constraint firstItem="dkp-pM-5Pg" firstAttribute="height" secondItem="Vx2-Ml-7jO" secondAttribute="height" id="kM3-Vh-Gl0"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="width" secondItem="LOP-oM-env" secondAttribute="width" id="kUt-GY-Eyk"/>
+                    <constraint firstAttribute="bottom" secondItem="LOP-oM-env" secondAttribute="bottom" constant="20" id="nzJ-OM-GZS"/>
+                    <constraint firstItem="bDD-cv-UMd" firstAttribute="height" secondItem="dkp-pM-5Pg" secondAttribute="height" id="sXh-ij-XNn"/>
+                    <constraint firstItem="Vx2-Ml-7jO" firstAttribute="leading" secondItem="dkp-pM-5Pg" secondAttribute="trailing" constant="8" id="u2J-Gb-pO3"/>
+                </constraints>
             </view>
         </window>
     </objects>

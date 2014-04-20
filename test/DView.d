@@ -15,6 +15,11 @@ class DView : ObjC.NSView
 		writeln(__FUNCTION__);
 	}
 
+	this(int a)
+	{
+		writeln(__FUNCTION__);
+	}
+
 	void drawRect_(Cocoa.NSRect rect)
 	{
 		mixin(_ObjC!q{
