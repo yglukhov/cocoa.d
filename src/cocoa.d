@@ -13,7 +13,7 @@ import core.stdc.config;
 import core.memory;
 import std.range;
 import std.c.stdlib;
-import core.vararg;
+import std.exception;
 
 
 pragma(lib, "objc");
@@ -230,48 +230,31 @@ alias InitFunc = _ObjCClass function();
 private InitFunc[string] _gUnboundClasses;
 private InitFunc[string] _gUnregisteredClasses;
 
-private void bindUnboundClasses()
+private bool handleHandlers(alias arr)()
 {
 	string[] success;
-	foreach (k, v; _gUnboundClasses)
-	{
-		if (v())
-		{
-			success ~= k;
-		}
-	}
+	foreach (k, v; arr)
+		if (v()) success ~= k;
 
 	if (success.length)
 	{
 		foreach (k; success)
-		{
-			_gUnboundClasses.remove(k);
-		}
-
-		registerUnregisteredClasses();
+			arr.remove(k);
+		return true;
 	}
+	return false;
+}
+
+private void bindUnboundClasses()
+{
+	if (handleHandlers!_gUnboundClasses())
+		registerUnregisteredClasses();
 }
 
 private void registerUnregisteredClasses()
 {
-	string[] success;
-
-	foreach (k, v; _gUnregisteredClasses)
-	{
-		if (v())
-		{
-			success ~= k;
-		}
-	}
-
-	if (success.length)
-	{
-		foreach (k; success)
-		{
-			_gUnregisteredClasses.remove(k);
-		}
+	if (handleHandlers!_gUnregisteredClasses())
 		registerUnregisteredClasses();
-	}
 }
 
 CFStringRef CFStringWithString(const char[] s)
@@ -289,7 +272,7 @@ string StringWithCFString(CFStringRef s)
 	Boolean success = CoreFoundation.CFStringGetCString(s, array.ptr, array.length, CFStringEncoding.kCFStringEncodingUTF8);
 	len = strlen(array.ptr);
 	array = array[0 .. len];
-	return to!string(array);
+	return assumeUnique(array);
 }
 
 auto DTypeToObjcType(T)(T a)
@@ -344,8 +327,8 @@ struct ObjCSelector(string name)
 		{
 			enum SelectorFromDFunc(string F) = F.replace("_", ":") ~ "\0";
 			_sel = cast(shared SEL)sel_registerName(SelectorFromDFunc!(name).ptr);
+			assert(_sel);
 		}
-		assert(_sel);
 		return cast(SEL)_sel;
 	}
 
@@ -368,7 +351,7 @@ struct Dobjc_msgSend(RetType)
 
 struct ObjCBase(T)
 {
-	static string expandConvertedArgs(string prefix, string suffix, string convertorFunc, int count)
+	private static string expandConvertedArgs(string prefix, string suffix, string convertorFunc, int count)
 	{
 		string result = prefix;
 		foreach (i; 0 .. count) result ~= "," ~ convertorFunc ~ "(args[" ~ to!string(i) ~ "])";
@@ -377,65 +360,56 @@ struct ObjCBase(T)
 	}
 
 	RetType s(string name, RetType, Args...)(Args args)
-		if (is (RetType == ObjCObj))
 	{
-		RetType r = ObjCObj(s!(name, CFTypeRef, Args)(args), SelectorReturnsAutoreleasedValue!name, name);
-		return r;
-	}
-
-	RetType s(string name, RetType, Args...)(Args args)
-		if (is (RetType : _ObjcBase))
-	{
-		CFTypeRef r = s!(name, CFTypeRef, Args)(args);
-		if (r is null) return null;
-
-		alias RetTypeParent = BaseClassesTuple!RetType[0];
-
-		static if (is(RetTypeParent == _ObjcBase))
+		static if (is (RetType == ObjCObj))
 		{
-			// Native objc object
-			RetType res = new RetType();
-			static if (SelectorReturnsAutoreleasedValue!name)
+			RetType r = ObjCObj(s!(name, CFTypeRef, Args)(args), SelectorReturnsAutoreleasedValue!name, name);
+			return r;
+		}
+		else static if (is (RetType : _ObjcBase))
+		{
+			CFTypeRef r = s!(name, CFTypeRef, Args)(args);
+			if (r is null) return null;
+
+			alias RetTypeParent = BaseClassesTuple!RetType[0];
+
+			static if (is(RetTypeParent == _ObjcBase))
 			{
-				CoreFoundation.CFRetain(r);
+				// Native objc object
+				RetType res = new RetType();
+				static if (SelectorReturnsAutoreleasedValue!name)
+				{
+					CoreFoundation.CFRetain(r);
+				}
+				res._obj.mObj = r;
+				res._needsRelease = true;
+				return res;
 			}
-			res._obj.mObj = r;
-			res._needsRelease = true;
-			return res;
+			else
+			{
+				// Our objc object
+				return cast(RetType)dObjectAssociatedWithObjCProxy(r);
+			}
 		}
-		else
+		else static if (isIntegral!RetType || isSomeChar!RetType || isPointer!RetType || is(RetType == void))
 		{
-			// Our objc object
-			return cast(RetType)dObjectAssociatedWithObjCProxy(r);
+			static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
+			mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType).f(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+		}
+		else static if (isFloatingPoint!RetType)
+		{
+		//	static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
+		//	mixin(expandConvertedArgs("void* result = objc_msgSend(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+		//	return ObjCTypeToDType!(RetType, SelectorReturnsAutoreleasedValue!name)(result);
+		}
+		else static if (false && is (RetType == Variant))
+		{
+			static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
+			mixin(expandConvertedArgs("void* result = objc_msgSend(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			ObjCObj r = ObjCObj(result, SelectorReturnsAutoreleasedValue!name, name);
+			return Variant(r);
 		}
 	}
-
-	RetType s(string name, RetType, Args...)(Args args)
-		if (isIntegral!RetType || isSomeChar!RetType || isPointer!RetType || is(RetType == void))
-	{
-		static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
-		mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType).f(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
-	}
-
-	//RetType s(string name, RetType, Args...)(Args args)
-	//	if (ivertobjcsFloatingPoint!RetType)
-	//{
-	//	static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
-	//	mixin(expandConvertedArgs("void* result = objc_msgSend(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
-	//	return ObjCTypeToDType!(RetType, SelectorReturnsAutoreleasedValue!name)(result);
-	//}
-
-static if (0)
-{
-	RetType s(string name, RetType, Args...)(Args args)
-		if (is (RetType == Variant))
-	{
-		static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
-		mixin(expandConvertedArgs("void* result = objc_msgSend(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
-		ObjCObj r = ObjCObj(result, SelectorReturnsAutoreleasedValue!name, name);
-		return Variant(r);
-	}
-}
 
 	T mObj;
 }
@@ -516,7 +490,7 @@ struct ObjCObj
 		}
 	}
 
-	auto init()
+	auto init_()
 	{
 		return s!("init", ObjCObj)();
 	}
@@ -579,7 +553,7 @@ unittest
 	ObjCObj s1 = ObjC.NSString.c.s!("alloc", ObjCObj)();
 	s1 = s1.s!"init"();
 	ObjCObj s2 = ObjC.NSString.c.s!("alloc", ObjCObj)().s!("initWithString_", ObjCObj)("hi");
-	ObjCObj s3 = ObjC.NSString.c.s!("alloc", ObjCObj)().init();
+	ObjCObj s3 = ObjC.NSString.c.s!("alloc", ObjCObj)().init_();
 	ObjCObj arr = ObjC.NSArray.c.s!("alloc", ObjCObj)().initWithObjects_(s1, s2, s3, null);
 	s1 = arr.componentsJoinedByString_(":");
 	assert(StringWithCFString(s1._base.mObj) == ":hi:");
@@ -1053,18 +1027,6 @@ unittest
 		ObjC.NSString str = [arr componentsJoinedByString: ", "];
 		uint length = [str length];
 		assert(length == "Hello, world!".length);
-		length = [str length];
-		assert(length == "Hello, world!".length);
-	});
-
-	mixin(_ObjC!q{
-		length = [str length];
-		assert(length == "Hello, world!".length);
-	});
-
-	mixin(_ObjC!q{
-		length = [str length];
-		assert(length == "Hello, world!".length);
 	});
 
 	void TheFollowingCodeDoesNotNeedToRunJustEnsureItCompiles()
@@ -1073,6 +1035,25 @@ unittest
 		[[ObjC.NSColor.c redColor] set];
 		});
 	}
+}
+
+unittest
+{
+	mixin(_ObjC!q{
+		id str = [ObjC.NSString.c stringWithString: "Hello, world!"];
+		int length = [str length];
+		assert(length == "Hello, world!".length);
+	});
+
+	immutable string duplicatedObjCCode =
+	q{
+		length = [str length];
+		assert(length == "Hello, world!".length);
+	};
+
+	mixin(_ObjC!duplicatedObjCCode);
+	mixin(_ObjC!duplicatedObjCCode);
+	mixin(_ObjC!duplicatedObjCCode);
 }
 
 version(unittest) class Test : ObjC.NSObject
