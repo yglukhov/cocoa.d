@@ -207,6 +207,17 @@ extern (C) class Cocoa
 
 	align(1) struct CGRect
 	{
+		this(CGPoint o, CGSize s)
+		{
+			origin = o;
+			size = s;
+		}
+
+		this(CGFloat x, CGFloat y, CGFloat w, CGFloat h)
+		{
+			this(CGPoint(x, y), CGSize(w, h));
+		}
+
 		CGPoint origin;
 		CGSize size;
 	}
@@ -276,7 +287,7 @@ string StringWithCFString(CFStringRef s)
 }
 
 auto DTypeToObjcType(T)(T a)
-	if (isIntegral!T || isSomeChar!T || isPointer!T || isFloatingPoint!T)
+	if (isIntegral!T || isSomeChar!T || isPointer!T || isFloatingPoint!T || is(T == struct))
 {
 	return a;
 }
@@ -325,31 +336,36 @@ struct ObjCSelector(string name)
 	{
 		if (_sel is null)
 		{
-			enum SelectorFromDFunc(string F) = F.replace("_", ":") ~ "\0";
-			_sel = cast(shared SEL)sel_registerName(SelectorFromDFunc!(name).ptr);
+			enum SelectorFromDFunc = name.replace("_", ":") ~ "\0";
+			_sel = cast(shared SEL)sel_registerName(SelectorFromDFunc.ptr);
 			assert(_sel);
 		}
 		return cast(SEL)_sel;
 	}
 
+	enum argCount = name.count('_');
+	enum returnsAutoreleasedValue = !(name.startsWith("init") || name.startsWith("new") || name.startsWith("copy") || name.startsWith("mutableCopy"));
+
 	shared static SEL _sel;
 }
 
-enum SelectorReturnsAutoreleasedValue(string name) = !(name.startsWith("init") || name.startsWith("new") || name.startsWith("copy") || name.startsWith("mutableCopy"));
+static assert(ObjCSelector!"selectorWithNothing".argCount == 0);
+static assert(ObjCSelector!"selectorWithThis_".argCount == 1);
+static assert(ObjCSelector!"selectorWithThis_andThat_".argCount == 2);
 
-static assert(SelectorReturnsAutoreleasedValue!"length");
-static assert(!SelectorReturnsAutoreleasedValue!"init");
+static assert(ObjCSelector!"length".returnsAutoreleasedValue);
+static assert(!ObjCSelector!"init".returnsAutoreleasedValue);
 
-extern(C) alias D_objc_msgSend_type(RetType, Args...) = RetType function(CFTypeRef obj, SEL sel, Args args);
+extern(C) alias D_objc_msgSend_type(RetType, uint ArgCount, Args...) = RetType function(CFTypeRef obj, SEL sel, Args[0 .. ArgCount] args, ...);
 
-RetType Dobjc_msgSend(RetType, Args...)(CFTypeRef obj, SEL sel, Args args)
+RetType Dobjc_msgSend(RetType, uint ArgCount = Args.length, Args...)(CFTypeRef obj, SEL sel, Args args)
 {
-	return (cast(D_objc_msgSend_type!(RetType, Args))&objc_msgSend)(obj, sel, args);
+	return (cast(D_objc_msgSend_type!(RetType, ArgCount, Args))&objc_msgSend)(obj, sel, args);
 }
 
-RetType Dobjc_msgSend_fpret(RetType, Args...)(CFTypeRef obj, SEL sel, Args args)
+RetType Dobjc_msgSend_fpret(RetType, uint ArgCount = Args.length, Args...)(CFTypeRef obj, SEL sel, Args args)
 {
-	return (cast(D_objc_msgSend_type!(RetType, Args))&objc_msgSend_fpret)(obj, sel, args);
+	return (cast(D_objc_msgSend_type!(RetType, ArgCount, Args))&objc_msgSend_fpret)(obj, sel, args);
 }
 
 struct ObjCBase(T)
@@ -364,16 +380,18 @@ struct ObjCBase(T)
 
 	RetType s(string name, RetType, Args...)(Args args)
 	{
-		static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
+		enum selectorArgsCount = ObjCSelector!name.argCount;
+		static assert(args.length == 0 || selectorArgsCount > 0, "Forgot to end your call with _?");
+
+		enum selectorReturnsAutoreleasedValue = ObjCSelector!name.returnsAutoreleasedValue;
 
 		static if (is (RetType == ObjCObj))
 		{
-			RetType r = ObjCObj(s!(name, CFTypeRef, Args)(args), SelectorReturnsAutoreleasedValue!name, name);
-			return r;
+			return ObjCObj(s!(name, CFTypeRef)(args), selectorReturnsAutoreleasedValue, name);
 		}
 		else static if (is (RetType : _ObjcBase))
 		{
-			CFTypeRef r = s!(name, CFTypeRef, Args)(args);
+			CFTypeRef r = s!(name, CFTypeRef)(args);
 			if (r is null) return null;
 
 			alias RetTypeParent = BaseClassesTuple!RetType[0];
@@ -382,7 +400,7 @@ struct ObjCBase(T)
 			{
 				// Native objc object
 				RetType res = new RetType();
-				static if (SelectorReturnsAutoreleasedValue!name)
+				static if (selectorReturnsAutoreleasedValue)
 				{
 					CoreFoundation.CFRetain(r);
 				}
@@ -398,16 +416,21 @@ struct ObjCBase(T)
 		}
 		else static if (isIntegral!RetType || isSomeChar!RetType || isPointer!RetType || is(RetType == void))
 		{
-			mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType, selectorArgsCount)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 		}
 		else static if (isFloatingPoint!RetType)
 		{
-			mixin(expandConvertedArgs("return Dobjc_msgSend_fpret!(RetType, Args)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("return Dobjc_msgSend_fpret!(RetType, selectorArgsCount)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+		}
+		else static if (is(RetType : string))
+		{
+			ObjCObj r = s!(name, ObjCObj)(args);
+			return StringWithCFString(r._base.mObj);
 		}
 		else static if (false && is (RetType == Variant))
 		{
-			mixin(expandConvertedArgs("void* result = Dobjc_msgSend!(void*)(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
-			ObjCObj r = ObjCObj(result, SelectorReturnsAutoreleasedValue!name, name);
+			mixin(expandConvertedArgs("auto result = Dobjc_msgSend!(CFTypeRef, selectorArgsCount)(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			ObjCObj r = ObjCObj(result, selectorReturnsAutoreleasedValue, name);
 			return Variant(r);
 		}
 	}
@@ -1092,6 +1115,19 @@ unittest
 		num = [ObjC.NSNumber numberWithDouble: 456.789];
 		double doubleRes = [num doubleValue];
 		assert(doubleRes > 456.788 && doubleRes < 456.79, "Invalid doubleRes: " ~ to!string(doubleRes));
+
+		string s = [ObjC.NSString stringWithFormat: "%d, %.3f, %d", 123, 123.456f, 456];
+		assert(s == "123, 123.456, 456");
+	});
+}
+
+unittest
+{
+	mixin(_ObjC!q{
+		auto rect = Cocoa.NSRect(12, 34, 56, 78);
+		id val = [ObjC.NSValue valueWithRect: rect];
+		string res = [val description];
+		assert(res == "NSRect: {{12, 34}, {56, 78}}");
 	});
 }
 
