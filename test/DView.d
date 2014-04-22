@@ -24,7 +24,7 @@ class DView : ObjC.NSView
 	{
 		mixin(_ObjC!q{
 
-		[[ObjC.NSColor.c redColor] set];
+		[[ObjC.NSColor redColor] set];
 		NSRectFill(rect);
 
 		});

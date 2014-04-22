@@ -616,7 +616,7 @@ private class Expression
 				{
 					auto word = part.lastWordInString();
 					_selector = word ~ "_";
-					_target = "(" ~ part[0 .. $ - word.length] ~ ")";
+					_target = part[0 .. $ - word.length];
 				}
 				else if (i == parts.length - 1)
 				{
@@ -656,6 +656,10 @@ private class Expression
 			{
 				targetExpr._retType = "id";
 			}
+		}
+		else
+		{
+			_target = "mixin(TargetFromString!`" ~ _target.strip() ~ "`)";
 		}
 	}
 
@@ -700,7 +704,6 @@ private string evalLine(string line, Expression[] exprs) pure
 
 private string assignmentTypeFromString(string s) pure
 {
-	s = s.strip();
 	if (s.length == 0)
 	{
 		return "void";
@@ -723,6 +726,25 @@ private string assignmentTypeFromString(string s) pure
 		)`;
 	}
 }
+
+enum AssignmentType(string s) = assignmentTypeFromString(s);
+
+private string targetFromString(string s) pure
+{
+	return `()
+	{
+		static if (__traits(compiles, mixin("(){ return (` ~ s ~ `); }()")))
+		{
+			mixin("return (` ~ s ~ `);");
+		}
+		else
+		{
+			mixin("return (` ~ s ~ `).c;");
+		}
+	}()`;
+}
+
+enum TargetFromString(string s) = targetFromString(s);
 
 private string castTypeFromString(string s) pure
 {
@@ -782,7 +804,7 @@ string convertObjcToD(string objcCode) pure
 				long assignment = line.indexOf("=");
 				if (assignment != -1)
 				{
-					exprs[line.tagInString()]._retType = assignmentTypeFromString(line[0 .. assignment]);
+					exprs[line.tagInString()]._retType = "mixin(AssignmentType!`" ~ line[0 .. assignment].strip() ~ "`)";
 				}
 				else
 				{
@@ -1023,16 +1045,17 @@ unittest
 unittest
 {
 	mixin(_ObjC!q{
-		ObjC.NSArray arr = [ObjC.NSArray.c arrayWithObjects: "Hello", "world!", null];
+		ObjC.NSArray arr = [ObjC.NSArray arrayWithObjects: "Hello", "world!", null];
 		ObjC.NSString str = [arr componentsJoinedByString: ", "];
 		uint length = [str length];
 		assert(length == "Hello, world!".length);
+
 	});
 
 	void TheFollowingCodeDoesNotNeedToRunJustEnsureItCompiles()
 	{
 		mixin(_ObjC!q{
-		[[ObjC.NSColor.c redColor] set];
+		[[ObjC.NSColor redColor] set];
 		});
 	}
 }
@@ -1040,7 +1063,7 @@ unittest
 unittest
 {
 	mixin(_ObjC!q{
-		id str = [ObjC.NSString.c stringWithString: "Hello, world!"];
+		id str = [ObjC.NSString stringWithString: "Hello, world!"];
 		int length = [str length];
 		assert(length == "Hello, world!".length);
 	});
