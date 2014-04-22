@@ -63,9 +63,9 @@ enum {
    OBJC_ASSOCIATION_COPY = octal!1403
 };
 
-	void* objc_msgSend(CFTypeRef obj, SEL sel, ...);
-	void* objc_msgSend_fpret(CFTypeRef obj, SEL sel, ...);
-	void* objc_msgSend_stret(CFTypeRef obj, SEL sel, ...);
+	void objc_msgSend(CFTypeRef obj, SEL sel, ...);
+	void objc_msgSend_fpret(CFTypeRef obj, SEL sel, ...);
+	void objc_msgSend_stret(CFTypeRef obj, SEL sel, ...);
 
 	void objc_setAssociatedObject(CFTypeRef object, void *key, void* value, uint policy);
 	void* objc_getAssociatedObject(CFTypeRef object, void *key);
@@ -276,7 +276,7 @@ string StringWithCFString(CFStringRef s)
 }
 
 auto DTypeToObjcType(T)(T a)
-	if (isIntegral!T || isSomeChar!T || isPointer!T)
+	if (isIntegral!T || isSomeChar!T || isPointer!T || isFloatingPoint!T)
 {
 	return a;
 }
@@ -340,13 +340,16 @@ enum SelectorReturnsAutoreleasedValue(string name) = !(name.startsWith("init") |
 static assert(SelectorReturnsAutoreleasedValue!"length");
 static assert(!SelectorReturnsAutoreleasedValue!"init");
 
-struct Dobjc_msgSend(RetType)
+extern(C) alias D_objc_msgSend_type(RetType, Args...) = RetType function(CFTypeRef obj, SEL sel, Args args);
+
+RetType Dobjc_msgSend(RetType, Args...)(CFTypeRef obj, SEL sel, Args args)
 {
-	static this()
-	{
-		f = cast(typeof(f))&objc_msgSend;
-	}
-	__gshared static extern (C) RetType function (CFTypeRef obj, SEL sel, ...) f;
+	return (cast(D_objc_msgSend_type!(RetType, Args))&objc_msgSend)(obj, sel, args);
+}
+
+RetType Dobjc_msgSend_fpret(RetType, Args...)(CFTypeRef obj, SEL sel, Args args)
+{
+	return (cast(D_objc_msgSend_type!(RetType, Args))&objc_msgSend_fpret)(obj, sel, args);
 }
 
 struct ObjCBase(T)
@@ -361,6 +364,8 @@ struct ObjCBase(T)
 
 	RetType s(string name, RetType, Args...)(Args args)
 	{
+		static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
+
 		static if (is (RetType == ObjCObj))
 		{
 			RetType r = ObjCObj(s!(name, CFTypeRef, Args)(args), SelectorReturnsAutoreleasedValue!name, name);
@@ -393,19 +398,15 @@ struct ObjCBase(T)
 		}
 		else static if (isIntegral!RetType || isSomeChar!RetType || isPointer!RetType || is(RetType == void))
 		{
-			static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
-			mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType).f(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 		}
 		else static if (isFloatingPoint!RetType)
 		{
-		//	static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
-		//	mixin(expandConvertedArgs("void* result = objc_msgSend(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
-		//	return ObjCTypeToDType!(RetType, SelectorReturnsAutoreleasedValue!name)(result);
+			mixin(expandConvertedArgs("return Dobjc_msgSend_fpret!(RetType, Args)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 		}
 		else static if (false && is (RetType == Variant))
 		{
-			static assert(args.length == 0 || name.endsWith("_"), "Forgot to end your call with _?");
-			mixin(expandConvertedArgs("void* result = objc_msgSend(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("void* result = Dobjc_msgSend!(void*)(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 			ObjCObj r = ObjCObj(result, SelectorReturnsAutoreleasedValue!name, name);
 			return Variant(r);
 		}
@@ -1077,6 +1078,21 @@ unittest
 	mixin(_ObjC!duplicatedObjCCode);
 	mixin(_ObjC!duplicatedObjCCode);
 	mixin(_ObjC!duplicatedObjCCode);
+}
+
+unittest
+{
+	mixin(_ObjC!q{
+		float floatInput = 123.456;
+		id num = [ObjC.NSNumber numberWithFloat: floatInput];
+		float floatRes = [num floatValue];
+		assert(floatRes > 123.455 && floatRes < 123.457, "Invalid floatRes: " ~ to!string(floatRes));
+
+		// Test doubles
+		num = [ObjC.NSNumber numberWithDouble: 456.789];
+		double doubleRes = [num doubleValue];
+		assert(doubleRes > 456.788 && doubleRes < 456.79, "Invalid doubleRes: " ~ to!string(doubleRes));
+	});
 }
 
 version(unittest) class Test : ObjC.NSObject
