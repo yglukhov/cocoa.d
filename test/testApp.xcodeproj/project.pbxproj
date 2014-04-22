@@ -32,9 +32,9 @@
 			isEditable = 1;
 			outputFiles = (
 				"$(DERIVED_FILE_DIR)/_dummy_file_to_always_rebuild._",
-				"$(DERIVED_FILE_DIR)/$(INPUT_FILE_NAME).o",
+				"$(OBJECT_FILE_DIR_$(CURRENT_VARIANT))/$(INPUT_FILE_NAME).o",
 			);
-			script = "cd \"$INPUT_FILE_DIR\"\n\nD_CONFIGURATION=-release\nD_UNITTESTS=\nif [ \"$CONFIGURATION\" = \"Debug\" ]\nthen\n    D_CONFIGURATION=-debug\n    D_UNITTESTS=-unittest\nfi\n\nCOMMAND=$(cat << EOF\n/opt/local/bin/dmd $D_CONFIGURATION $D_UNITTESTS -c $D_SEARCH_PATHS \"-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\" \"$INPUT_FILE_NAME\"\nEOF\n)\n\n#COMMAND=\"/opt/local/bin/dmd -debug -c $D_SEARCH_PATHS '-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o' '$INPUT_FILE_NAME'\"\necho $COMMAND\neval $COMMAND\n#/opt/local/bin/dmd -debug -c $D_SEARCH_PATHS \"-of$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\" \"$INPUT_FILE_NAME\"\n#touch \"$DERIVED_FILE_DIR/$INPUT_FILE_NAME.o\"\n#touch \"$INPUT_FILE_NAME\"\n";
+			script = "cd \"$INPUT_FILE_DIR\"\n\nD_CONFIGURATION=-release\nD_UNITTESTS=\n\n[ \"$CONFIGURATION\" = \"Debug\" ] &&\n    D_CONFIGURATION=-debug &&\n    D_UNITTESTS=-unittest\n\nD_ARCH=-m32\n[ \"$CURRENT_ARCH\" = \"x86_64\" ] && D_ARCH=-m64\n\neval \"D_OUTPUT_DIR=\\${OBJECT_FILE_DIR_$CURRENT_VARIANT}\"\n\nCOMMAND=$(cat << EOF\n/opt/local/bin/dmd $D_CONFIGURATION $D_UNITTESTS $D_ARCH -c $D_SEARCH_PATHS \"-of$D_OUTPUT_DIR/$INPUT_FILE_NAME.o\" \"$INPUT_FILE_NAME\"\nEOF\n)\n\necho $COMMAND\neval $COMMAND\n";
 		};
 /* End PBXBuildRule section */
 

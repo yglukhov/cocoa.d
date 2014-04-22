@@ -583,10 +583,10 @@ private int[] tagsInString(string str) pure
 
 private int tagInString(string str) pure
 {
-	long begin = str.indexOf("${");
+	auto begin = str.indexOf("${");
 	if (begin != -1)
 	{
-		long end = begin + str[begin .. $].indexOf("}");
+		auto end = begin + str[begin .. $].indexOf("}");
 		return to!int(str[begin + 2 .. end]);
 	}
 	return -1;
@@ -687,11 +687,11 @@ private string evalLine(string line, Expression[] exprs) pure
 {
 	while(true)
 	{
-		long begin = line.lastIndexOf("${");
+		auto begin = line.lastIndexOf("${");
 		if (begin != -1)
 		{
-			long end = begin + line[begin .. $].indexOf("}");
-			int index = to!int(line[begin + 2 .. end]);
+			auto end = begin + line[begin .. $].indexOf("}");
+			auto index = to!uint(line[begin + 2 .. end]);
 			line = line[0 .. begin] ~ exprs[index].eval(exprs) ~ line[end + 1 .. $];
 		}
 		else
@@ -751,7 +751,7 @@ private string castTypeFromString(string s) pure
 	string res = s.strip();
 	if (res.length && res.endsWith(")"))
 	{
-		long openingParen = s.lastIndexOf("(");
+		auto openingParen = s.lastIndexOf("(");
 		res = s[openingParen .. $];
 	}
 	else
@@ -769,11 +769,11 @@ string convertObjcToD(string objcCode) pure
 	string result = "";
 	foreach (line; objcCode.splitter(";")) if (line.length)
 	{
-		long openingBracket = line.lastIndexOf("[");
+		auto openingBracket = line.lastIndexOf("[");
 		Expression[] exprs;
 		while (openingBracket != -1)
 		{
-			long closingBracket = line[openingBracket .. $].indexOf("]");
+			auto closingBracket = line[openingBracket .. $].indexOf("]");
 			if (closingBracket != -1)
 			{
 				closingBracket += openingBracket;
@@ -801,7 +801,7 @@ string convertObjcToD(string objcCode) pure
 			}
 			else
 			{
-				long assignment = line.indexOf("=");
+				auto assignment = line.indexOf("=");
 				if (assignment != -1)
 				{
 					exprs[line.tagInString()]._retType = "mixin(AssignmentType!`" ~ line[0 .. assignment].strip() ~ "`)";
