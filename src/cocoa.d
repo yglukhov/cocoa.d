@@ -1,5 +1,43 @@
 #!/usr/bin/env rdmd -debug -unittest -main
 
+/*******************************************************************************
+ * This module implements D to Objective-C bridge. It is designed to work with
+ * any Objective-C library or framework without any other explicit bindings.
+ *
+ * Synopsis:
+ * -----
+
+// Calling Objective-C code:
+mixin(_ObjC!q{
+	ObjC.NSString oStr = [ObjC.NSString stringWithFormat: "%d, %.2f, %d", 12, 34.56, 78];
+	string dStr = [oStr description];
+	assert(dStr == "123, 34.56, 78");
+
+	id array = [ObjC.NSArray arrayWithObjects: "Hello", "world", null];
+	dStr = [array componentsJoinedByString: ", "];
+	assert(dStr == "Hello, world");
+});
+
+extern (C) void NSRectFill(Cocoa.NSRect rect);
+
+// Subclassing Objective-C classes:
+class DView : ObjC.NSView
+{
+	mixin RegisterObjCClass;
+	void drawRect_(Cocoa.NSRect rect)
+	{
+		mixin(_ObjC!q{
+			[[NSColor redColor] set];
+			NSRectFill(rect);
+		});
+	}
+}
+
+ * -----
+ *
+ ******************************************************************************/
+module cocoa;
+
 import std.stdio;
 import core.sys.posix.dlfcn;
 import std.array;
@@ -20,7 +58,7 @@ pragma(lib, "objc");
 
 extern (C)
 {
-	alias SEL = const(void)*;
+	alias SEL = immutable(void)*;
 	alias _ObjCClass = immutable(void)*;
 	alias Class = immutable(void)*;
 	alias Method = const(void)*;
@@ -195,14 +233,14 @@ extern (C) class Cocoa
 
 	align(1) struct CGPoint
 	{
-		CGFloat x;
-		CGFloat y;
+		CGFloat x = 0;
+		CGFloat y = 0;
 	}
 
 	align(1) struct CGSize
 	{
-		CGFloat width;
-		CGFloat height;
+		CGFloat width = 0;
+		CGFloat height = 0;
 	}
 
 	align(1) struct CGRect
@@ -368,6 +406,11 @@ RetType Dobjc_msgSend_fpret(RetType, uint ArgCount = Args.length, Args...)(CFTyp
 	return (cast(D_objc_msgSend_type!(RetType, ArgCount, Args))&objc_msgSend_fpret)(obj, sel, args);
 }
 
+RetType Dobjc_msgSend_stret(RetType, uint ArgCount = Args.length, Args...)(CFTypeRef obj, SEL sel, Args args)
+{
+	return (cast(D_objc_msgSend_type!(RetType, ArgCount, Args))&objc_msgSend_stret)(obj, sel, args);
+}
+
 struct ObjCBase(T)
 {
 	private static string expandConvertedArgs(string prefix, string suffix, string convertorFunc, int count)
@@ -421,6 +464,10 @@ struct ObjCBase(T)
 		else static if (isFloatingPoint!RetType)
 		{
 			mixin(expandConvertedArgs("return Dobjc_msgSend_fpret!(RetType, selectorArgsCount)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+		}
+		else static if (is(RetType == struct))
+		{
+			mixin(expandConvertedArgs("return Dobjc_msgSend_stret!(RetType, selectorArgsCount)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 		}
 		else static if (is(RetType : string))
 		{
@@ -1073,7 +1120,6 @@ unittest
 		ObjC.NSString str = [arr componentsJoinedByString: ", "];
 		uint length = [str length];
 		assert(length == "Hello, world!".length);
-
 	});
 
 	void TheFollowingCodeDoesNotNeedToRunJustEnsureItCompiles()
@@ -1116,18 +1162,25 @@ unittest
 		double doubleRes = [num doubleValue];
 		assert(doubleRes > 456.788 && doubleRes < 456.79, "Invalid doubleRes: " ~ to!string(doubleRes));
 
-		string s = [ObjC.NSString stringWithFormat: "%d, %.3f, %d", 123, 123.456f, 456];
-		assert(s == "123, 123.456, 456");
+		// Test passing floats to objc methods with ellipsis
+		string s = [ObjC.NSString stringWithFormat: "%d, %.3f, %d", 123, doubleRes, 456];
+		assert(s == "123, 456.789, 456");
 	});
 }
 
-unittest
+unittest // Test passing and returning structs
 {
 	mixin(_ObjC!q{
 		auto rect = Cocoa.NSRect(12, 34, 56, 78);
 		id val = [ObjC.NSValue valueWithRect: rect];
 		string res = [val description];
 		assert(res == "NSRect: {{12, 34}, {56, 78}}");
+
+		rect = Cocoa.NSRect.init;
+		assert(rect == Cocoa.NSRect(0, 0, 0, 0));
+
+		rect = [val rectValue];
+		assert(rect == Cocoa.NSRect(12, 34, 56, 78));
 	});
 }
 
