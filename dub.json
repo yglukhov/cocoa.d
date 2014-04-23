@@ -1,0 +1,10 @@
+{
+	"name": "cocoa.d",
+	"description": "D to Cocoa bridge.",
+	"copyright": "Copyright © 2014, Yuri Glukhov",
+	"target": "library",
+	"authors": ["uran"],
+	"libs": ["objc"],
+	"dependencies": {
+	}
+}
