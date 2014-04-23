@@ -1,9 +1,9 @@
 PROJECTNAME = Cocoa.d
 REFERENCETOP = cocoa.html
-REPOSRCTREE = https://github.com/yglukhov/cocoa.d/tree/master/src
-TITLEBARTEXT = <a href="https://github.com/JakobOvrum/bootDoc">Github Page</a>
+REPOSRCTREE = https://github.com/yglukhov/cocoa.d/tree/master/source
+TITLEBARTEXT = <a href="https://github.com/yglukhov/cocoa.d">Github Page</a>
 RESOURCEROOT = bootDoc/
-ISSUETRACKER = https://github.com/JakobOvrum/bootDoc/issues/$1
+ISSUETRACKER = https://github.com/yglukhov/cocoa.d/issues/$1
 DEFAULTPACKAGE = cocoa
 PACKAGESEP = .
 FAVICON = $(RESOURCEROOT)assets/ico/favicon.ico
