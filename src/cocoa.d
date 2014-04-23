@@ -567,9 +567,11 @@ struct ObjCObj
 	}
 }
 
-class ObjC
+//templa
+
+struct ObjC
 {
-	alias opDispatch(string s) = _ObjcClass!s;
+	static alias opDispatch(string s) = _ObjcClass!s;
 }
 
 struct NSAutoreleasePool
@@ -942,15 +944,29 @@ private class _ObjcBase
 	private bool _needsRelease = false;
 }
 
+debug struct SelectorTypeCheck(string selectorName, string className, Args...)
+{
+    shared static this()
+    {
+		// TODO: perform type checks here
+    }
+}
+
 class _ObjcClass(string className) : _ObjcBase
 {
 	template opDispatch(string name)
 	{
 		RetType opDispatch(RetType = ObjCObj, Args...)(Args args)
 		{
-			return this.s!(name, RetType, Args)(args);
+			return s!(name, RetType, Args)(args);
 		}
 	}
+
+    RetType s(string name, RetType = ObjCObj, Args...)(Args args)
+    {
+        debug alias Checker = SelectorTypeCheck!(name, className, Args);
+        return super.s!(name, RetType, Args)(args);
+    }
 
 	static _ObjCClass objcClass()
 	{
