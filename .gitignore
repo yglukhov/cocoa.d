@@ -1,0 +1,5 @@
+# Executables
+*.a
+
+# DUB-related
+.dub/
