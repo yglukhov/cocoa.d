@@ -55,7 +55,7 @@
 		7BFA924718F3F36E0028D67B /* Test.d */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.dtrace; path = Test.d; sourceTree = "<group>"; };
 		7BFA924B18F3F9740028D67B /* libdruntime.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libdruntime.a; path = /Volumes/Work/Projects/cocoa.d/test/../../../../opt/local/lib/libdruntime.a; sourceTree = "<absolute>"; };
 		7BFA924C18F3F9740028D67B /* libphobos2.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libphobos2.a; path = /Volumes/Work/Projects/cocoa.d/test/../../../../opt/local/lib/libphobos2.a; sourceTree = "<absolute>"; };
-		7BFA924F18F3FAA70028D67B /* cocoa.d */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.dtrace; name = cocoa.d; path = ../src/cocoa.d; sourceTree = "<group>"; };
+		7BFA924F18F3FAA70028D67B /* cocoa.d */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.dtrace; name = cocoa.d; path = ../source/cocoa.d; sourceTree = "<group>"; };
 		7BFA925118F3FF900028D67B /* AppDelegate.d */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.dtrace; path = AppDelegate.d; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -313,7 +313,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				D_SEARCH_PATHS = "-I$(PROJECT_DIR)/../src";
+				D_SEARCH_PATHS = "-I$(PROJECT_DIR)/../source";
 				INFOPLIST_FILE = "testApp-Info.plist";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
@@ -329,7 +329,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				D_SEARCH_PATHS = "-I$(PROJECT_DIR)/../src";
+				D_SEARCH_PATHS = "-I$(PROJECT_DIR)/../source";
 				INFOPLIST_FILE = "testApp-Info.plist";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
