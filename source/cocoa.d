@@ -887,7 +887,7 @@ string convertObjcToD(string objcCode) pure
 			line = evalLine(line, exprs);
 		}
 
-		result ~= line ~ ";";
+		result ~= line.strip() == "" ? "" : line ~ ";";
 	}
 
 	return result;
