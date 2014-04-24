@@ -93,13 +93,13 @@ extern (C)
 	    kCFStringEncodingUTF32LE = 0x1c000100 /* kTextEncodingUnicodeDefault + kUnicodeUTF32LEFormat */
 	}
 
-enum {
-   OBJC_ASSOCIATION_ASSIGN = 0,
-   OBJC_ASSOCIATION_RETAIN_NONATOMIC = 1,
-   OBJC_ASSOCIATION_COPY_NONATOMIC = 3,
-   OBJC_ASSOCIATION_RETAIN = octal!1401,
-   OBJC_ASSOCIATION_COPY = octal!1403
-};
+	enum {
+	   OBJC_ASSOCIATION_ASSIGN = 0,
+	   OBJC_ASSOCIATION_RETAIN_NONATOMIC = 1,
+	   OBJC_ASSOCIATION_COPY_NONATOMIC = 3,
+	   OBJC_ASSOCIATION_RETAIN = octal!1401,
+	   OBJC_ASSOCIATION_COPY = octal!1403
+	};
 
 	void objc_msgSend(CFTypeRef obj, SEL sel, ...);
 	void objc_msgSend_fpret(CFTypeRef obj, SEL sel, ...);
@@ -263,6 +263,15 @@ extern (C) class Cocoa
 	alias NSPoint = CGPoint;
 	alias NSSize = CGSize;
 	alias NSRect = CGRect;
+
+	enum {
+		NSBorderlessWindowMask     = 0,
+		NSTitledWindowMask         = 1 << 0,
+		NSClosableWindowMask       = 1 << 1,
+		NSMiniaturizableWindowMask = 1 << 2,
+		NSResizableWindowMask      = 1 << 3,
+		NSFullScreenWindowMask     = 1 << 14,
+	};
 
 	shared static void function(CFTypeRef obj, ...) NSLog;
 
