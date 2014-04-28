@@ -203,23 +203,24 @@ extern (C) class CoreFoundation
 {
 	mixin MacFramework;
 
-	shared static void function(CFTypeRef obj) CFShow;
+shared static:
+	void function(CFTypeRef obj) CFShow;
 
-	shared static CFTypeRef function(CFTypeRef obj) CFRelease;
-	shared static CFTypeRef function(CFTypeRef obj) CFRetain;
+	CFTypeRef function(CFTypeRef obj) CFRelease;
+	CFTypeRef function(CFTypeRef obj) CFRetain;
 
-	shared static CFStringRef function(CFAllocatorRef alloc, const char* cStr, CFStringEncoding encoding) CFStringCreateWithCString;
-	shared static CFStringRef function(CFAllocatorRef alloc, CFArrayRef theArray, CFStringRef separatorString) CFStringCreateByCombiningStrings;
-	shared static CFStringRef function(CFAllocatorRef alloc, const UInt8 *bytes, CFIndex numBytes, CFStringEncoding encoding, Boolean isExternalRepresentation) CFStringCreateWithBytes;
-	shared static CFStringRef function(CFAllocatorRef alloc, const UInt8 *bytes, CFIndex numBytes, CFStringEncoding encoding, Boolean isExternalRepresentation, CFAllocatorRef contentsDeallocator) CFStringCreateWithBytesNoCopy;
+	CFStringRef function(CFAllocatorRef alloc, const char* cStr, CFStringEncoding encoding) CFStringCreateWithCString;
+	CFStringRef function(CFAllocatorRef alloc, CFArrayRef theArray, CFStringRef separatorString) CFStringCreateByCombiningStrings;
+	CFStringRef function(CFAllocatorRef alloc, const UInt8 *bytes, CFIndex numBytes, CFStringEncoding encoding, Boolean isExternalRepresentation) CFStringCreateWithBytes;
+	CFStringRef function(CFAllocatorRef alloc, const UInt8 *bytes, CFIndex numBytes, CFStringEncoding encoding, Boolean isExternalRepresentation, CFAllocatorRef contentsDeallocator) CFStringCreateWithBytesNoCopy;
 
-	shared static Boolean function (CFStringRef theString, char *buffer, CFIndex bufferSize, CFStringEncoding encoding) CFStringGetCString;
+	Boolean function (CFStringRef theString, char *buffer, CFIndex bufferSize, CFStringEncoding encoding) CFStringGetCString;
 
-	shared static CFIndex function(CFStringRef theString) CFStringGetLength;
-	shared static CFIndex function(CFIndex length, CFStringEncoding encoding) CFStringGetMaximumSizeForEncoding;
+	CFIndex function(CFStringRef theString) CFStringGetLength;
+	CFIndex function(CFIndex length, CFStringEncoding encoding) CFStringGetMaximumSizeForEncoding;
 
-	shared static CFAllocatorRef kCFAllocatorDefault;
-	shared static CFAllocatorRef kCFAllocatorNull;
+	CFAllocatorRef kCFAllocatorDefault;
+	CFAllocatorRef kCFAllocatorNull;
 }
 
 extern (C) class Cocoa
@@ -264,11 +265,12 @@ extern (C) class Cocoa
 	alias NSSize = CGSize;
 	alias NSRect = CGRect;
 
-	shared static void function(CFTypeRef obj, ...) NSLog;
+shared static:
+	void function(CFTypeRef obj, ...) NSLog;
 
-	shared private static int function(int argc, const char** argv) NSApplicationMain;
+	private int function(int argc, const char** argv) NSApplicationMain;
 
-	static int applicationMain(string[] argv)
+	int applicationMain(string[] argv)
 	{
 		return NSApplicationMain(cast(int)argv.length, cast(const char**)argv);
 	}
