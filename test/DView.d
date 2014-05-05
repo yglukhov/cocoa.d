@@ -6,7 +6,7 @@ import core.memory;
 extern (C) void NSRectFill(Cocoa.NSRect rect);
 
 
-class DView : ObjC.NSView
+class DView : ObjC.OView
 {
 	mixin RegisterObjCClass;
 
@@ -24,6 +24,8 @@ class DView : ObjC.NSView
 	{
 		mixin(_ObjC!q{
 
+		[super drawRect: rect];
+		rect = Cocoa.NSInsetRect(rect, 10, 10);
 		[[ObjC.NSColor redColor] set];
 		NSRectFill(rect);
 

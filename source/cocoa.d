@@ -75,22 +75,22 @@ extern (C)
 
 	enum CFStringEncoding : uint
 	{
-	    kCFStringEncodingMacRoman = 0,
-	    kCFStringEncodingWindowsLatin1 = 0x0500, /* ANSI codepage 1252 */
-	    kCFStringEncodingISOLatin1 = 0x0201, /* ISO 8859-1 */
-	    kCFStringEncodingNextStepLatin = 0x0B01, /* NextStep encoding*/
-	    kCFStringEncodingASCII = 0x0600, /* 0..127 (in creating CFString, values greater than 0x7F are treated as corresponding Unicode value) */
-	    kCFStringEncodingUnicode = 0x0100, /* kTextEncodingUnicodeDefault  + kTextEncodingDefaultFormat (aka kUnicode16BitFormat) */
-	    kCFStringEncodingUTF8 = 0x08000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF8Format */
-	    kCFStringEncodingNonLossyASCII = 0x0BFF, /* 7bit Unicode variants used by Cocoa & Java */
+		kCFStringEncodingMacRoman = 0,
+		kCFStringEncodingWindowsLatin1 = 0x0500, /* ANSI codepage 1252 */
+		kCFStringEncodingISOLatin1 = 0x0201, /* ISO 8859-1 */
+		kCFStringEncodingNextStepLatin = 0x0B01, /* NextStep encoding*/
+		kCFStringEncodingASCII = 0x0600, /* 0..127 (in creating CFString, values greater than 0x7F are treated as corresponding Unicode value) */
+		kCFStringEncodingUnicode = 0x0100, /* kTextEncodingUnicodeDefault  + kTextEncodingDefaultFormat (aka kUnicode16BitFormat) */
+		kCFStringEncodingUTF8 = 0x08000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF8Format */
+		kCFStringEncodingNonLossyASCII = 0x0BFF, /* 7bit Unicode variants used by Cocoa & Java */
 
-	    kCFStringEncodingUTF16 = 0x0100, /* kTextEncodingUnicodeDefault + kUnicodeUTF16Format (alias of kCFStringEncodingUnicode) */
-	    kCFStringEncodingUTF16BE = 0x10000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF16BEFormat */
-	    kCFStringEncodingUTF16LE = 0x14000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF16LEFormat */
+		kCFStringEncodingUTF16 = 0x0100, /* kTextEncodingUnicodeDefault + kUnicodeUTF16Format (alias of kCFStringEncodingUnicode) */
+		kCFStringEncodingUTF16BE = 0x10000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF16BEFormat */
+		kCFStringEncodingUTF16LE = 0x14000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF16LEFormat */
 
-	    kCFStringEncodingUTF32 = 0x0c000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF32Format */
-	    kCFStringEncodingUTF32BE = 0x18000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF32BEFormat */
-	    kCFStringEncodingUTF32LE = 0x1c000100 /* kTextEncodingUnicodeDefault + kUnicodeUTF32LEFormat */
+		kCFStringEncodingUTF32 = 0x0c000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF32Format */
+		kCFStringEncodingUTF32BE = 0x18000100, /* kTextEncodingUnicodeDefault + kUnicodeUTF32BEFormat */
+		kCFStringEncodingUTF32LE = 0x1c000100 /* kTextEncodingUnicodeDefault + kUnicodeUTF32LEFormat */
 	}
 
 	enum
@@ -102,9 +102,19 @@ extern (C)
 		OBJC_ASSOCIATION_COPY = octal!1403
 	}
 
+	struct objc_super
+	{
+		CFTypeRef receiver;
+		Class superClass;
+	}
+
 	void objc_msgSend(CFTypeRef obj, SEL sel, ...);
 	void objc_msgSend_fpret(CFTypeRef obj, SEL sel, ...);
 	void objc_msgSend_stret(CFTypeRef obj, SEL sel, ...);
+
+	void objc_msgSendSuper(const objc_super *s, SEL sel, ...);
+	void objc_msgSendSuper_fpret(const objc_super *s, SEL sel, ...);
+	void objc_msgSendSuper_stret(const objc_super *s, SEL sel, ...);
 
 	void objc_setAssociatedObject(CFTypeRef object, void *key, void* value, uint policy);
 	void* objc_getAssociatedObject(CFTypeRef object, void *key);
@@ -285,12 +295,17 @@ shared static:
 	{
 		return NSApplicationMain(cast(int)argv.length, cast(const char**)argv);
 	}
+
+	NSRect function(NSRect aRect, CGFloat dX, CGFloat dY) NSInsetRect;
 }
 
 alias InitFunc = _ObjCClass function();
 
 private InitFunc[string] _gUnboundClasses;
 private InitFunc[string] _gUnregisteredClasses;
+
+alias DeferedFunc = bool function();
+debug private DeferedFunc[string] _gUncheckedSelectors;
 
 private bool handleHandlers(alias arr)()
 {
@@ -310,7 +325,10 @@ private bool handleHandlers(alias arr)()
 private void bindUnboundClasses()
 {
 	if (handleHandlers!_gUnboundClasses())
+	{
 		registerUnregisteredClasses();
+		debug handleHandlers!_gUncheckedSelectors();
+	}
 }
 
 private void registerUnregisteredClasses()
@@ -408,6 +426,7 @@ static assert(ObjCSelector!"length".returnsAutoreleasedValue);
 static assert(!ObjCSelector!"init".returnsAutoreleasedValue);
 
 extern(C) alias D_objc_msgSend_type(RetType, uint ArgCount, Args...) = RetType function(CFTypeRef obj, SEL sel, Args[0 .. ArgCount] args, ...);
+extern(C) alias D_objc_msgSendSuper_type(RetType, uint ArgCount, Args...) = RetType function(const objc_super* s, SEL sel, Args[0 .. ArgCount] args, ...);
 
 RetType Dobjc_msgSend(RetType, uint ArgCount = Args.length, Args...)(CFTypeRef obj, SEL sel, Args args)
 {
@@ -424,8 +443,29 @@ RetType Dobjc_msgSend_stret(RetType, uint ArgCount = Args.length, Args...)(CFTyp
 	return (cast(D_objc_msgSend_type!(RetType, ArgCount, Args))&objc_msgSend_stret)(obj, sel, args);
 }
 
+RetType Dobjc_msgSendSuper(RetType, uint ArgCount = Args.length, Args...)(const objc_super* s, SEL sel, Args args)
+{
+	return (cast(D_objc_msgSendSuper_type!(RetType, ArgCount, Args))&objc_msgSendSuper)(s, sel, args);
+}
+
+RetType Dobjc_msgSendSuper_fpret(RetType, uint ArgCount = Args.length, Args...)(const objc_super* s, SEL sel, Args args)
+{
+	return (cast(D_objc_msgSendSuper_type!(RetType, ArgCount, Args))&objc_msgSendSuper_fpret)(s, sel, args);
+}
+
+RetType Dobjc_msgSendSuper_stret(RetType, uint ArgCount = Args.length, Args...)(const objc_super* s, SEL sel, Args args)
+{
+	return (cast(D_objc_msgSendSuper_type!(RetType, ArgCount, Args))&objc_msgSendSuper_stret)(s, sel, args);
+}
+
+
 struct ObjCBase(T)
 {
+	this(in T obj)
+	{
+		mObj = obj;
+	}
+
 	private static string expandConvertedArgs(string prefix, string suffix, string convertorFunc, int count)
 	{
 		string result = prefix;
@@ -440,6 +480,16 @@ struct ObjCBase(T)
 		static assert(args.length == 0 || selectorArgsCount > 0, "Forgot to end your call with _?");
 
 		enum selectorReturnsAutoreleasedValue = ObjCSelector!name.returnsAutoreleasedValue;
+		static if (is (T == objc_super))
+		{
+			const objc_super* target = &mObj;
+			enum superInfix = "Super";
+		}
+		else
+		{
+			alias target = mObj;
+			enum superInfix = "";
+		}
 
 		static if (is (RetType == ObjCObj))
 		{
@@ -472,15 +522,15 @@ struct ObjCBase(T)
 		}
 		else static if (isIntegral!RetType || isSomeChar!RetType || isPointer!RetType || is(RetType == void))
 		{
-			mixin(expandConvertedArgs("return Dobjc_msgSend!(RetType, selectorArgsCount)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("return Dobjc_msgSend" ~ superInfix ~ "!(RetType, selectorArgsCount)(target, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 		}
 		else static if (isFloatingPoint!RetType)
 		{
-			mixin(expandConvertedArgs("return Dobjc_msgSend_fpret!(RetType, selectorArgsCount)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("return Dobjc_msgSend" ~ superInfix ~ "_fpret!(RetType, selectorArgsCount)(target, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 		}
 		else static if (is(RetType == struct))
 		{
-			mixin(expandConvertedArgs("return Dobjc_msgSend_stret!(RetType, selectorArgsCount)(cast(CFTypeRef)mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("return Dobjc_msgSend" ~ superInfix ~ "_stret!(RetType, selectorArgsCount)(target, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 		}
 		else static if (is(RetType : string))
 		{
@@ -489,7 +539,7 @@ struct ObjCBase(T)
 		}
 		else static if (false && is (RetType == Variant))
 		{
-			mixin(expandConvertedArgs("auto result = Dobjc_msgSend!(CFTypeRef, selectorArgsCount)(mObj, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
+			mixin(expandConvertedArgs("auto result = Dobjc_msgSend" ~ superInfix ~ "!(CFTypeRef, selectorArgsCount)(target, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
 			ObjCObj r = ObjCObj(result, selectorReturnsAutoreleasedValue, name);
 			return Variant(r);
 		}
@@ -579,8 +629,6 @@ struct ObjCObj
 		return i!("init", ObjCObj)();
 	}
 }
-
-//templa
 
 struct ObjC
 {
@@ -734,7 +782,7 @@ private class Expression
 			}
 		}
 
-        deduceTarget(exprs);
+		deduceTarget(exprs);
 	}
 
 	private final void deduceTarget(Expression[] exprs) pure
@@ -748,13 +796,23 @@ private class Expression
 			}
 
 			_targetType = targetExpr._retType;
-			_targetIsClass = "true";
+			_targetIsClass = "false";
 		}
 		else
 		{
-			_targetType = "mixin(TargetTypeFromString!`" ~ _target.strip() ~ "`)";
-			_targetIsClass = "mixin(TargetFromStringIsClass!`" ~ _target.strip() ~ "`)";
-			_target = "mixin(TargetFromString!`" ~ _target.strip() ~ "`)";
+			_target = _target.strip();
+			if (_target == "super")
+			{
+				_targetType = "typeof(super)";
+				_targetIsClass = "false";
+				_target = "ObjCBase!objc_super(objc_super(_objcObject(), super.c.mObj))";
+			}
+			else
+			{
+				_targetType = "mixin(TargetTypeFromString!`" ~ _target ~ "`)";
+				_targetIsClass = "mixin(TargetFromStringIsClass!`" ~ _target ~ "`)";
+				_target = "mixin(TargetFromString!`" ~ _target ~ "`)";
+			}
 		}
 	}
 
@@ -779,7 +837,7 @@ RetType invokeSelector(string name, RetType, bool isStatic, TargetType, RealTarg
 {
 	static if (is(TargetType == _ObjcClass!(className), string className))
 	{
-		debug alias Checker = SelectorTypeCheck!(name, isStatic, className, Args);
+		debug alias Checker = SelectorTypeCheck!(name, isStatic, className, RetType, Args);
 	}
 	return target.i!(name, RetType, Args)(args);
 }
@@ -957,7 +1015,7 @@ private class _ObjcBase
 {
 	private ObjCBase!CFTypeRef _obj;
 
-	private final CFTypeRef _objcObject()
+	protected final CFTypeRef _objcObject()
 	{
 		if (_obj.mObj is null)
 		{
@@ -992,13 +1050,34 @@ private class _ObjcBase
 	private bool _needsRelease = false;
 }
 
-debug private struct SelectorTypeCheck(string selectorName, bool isStaticMethod, string className, Args...)
+debug private struct SelectorTypeCheck(string selectorName, bool isStaticMethod, string className, RetType, Args...)
 {
-    shared static this()
-    {
-		//writeln("Checking types for selector: ", isStaticMethod ? "+" : "-", " ", className, "::", selectorName, Args.stringof);
+	shared static this()
+	{
+		checkSelectorType();
+	}
+
+	static bool checkSelectorType()
+	{
+		Class cl = objc_getClass(className.toStringz());
+		if (cl is null)
+		{
+			_gUncheckedSelectors[typeof(this).stringof] = &checkSelectorType;
+			return false;
+		}
+
+		if (isStaticMethod) cl = object_getClass(cl);
+
+		Method m = class_getInstanceMethod(cl, ObjCSelector!selectorName.selector);
+		assert(m !is null, "Class " ~ className ~ " doesn't respond to selector " ~ selectorName);
+		const char* t = method_getTypeEncoding(m);
+		const char[] types = t[0 .. strlen(t)];
+
 		// TODO: perform type checks here
-    }
+//		writeln("Checking types for selector: ", isStaticMethod ? "+" : "-", " ", className, "::", selectorName, Args.stringof);
+//		writeln("Types: ", types);
+		return true;
+	}
 }
 
 class _ObjcClass(string className) : _ObjcBase
@@ -1012,9 +1091,9 @@ class _ObjcClass(string className) : _ObjcBase
 	}
 
 	RetType i(string name, RetType = ObjCObj, Args...)(Args args)
-    {
-        return super.i!(name, RetType, Args)(args);
-    }
+	{
+		return super.i!(name, RetType, Args)(args);
+	}
 
 	static RetType s(string name, RetType = ObjCObj, Args...)(Args args)
 	{
@@ -1200,7 +1279,7 @@ unittest
 unittest
 {
 	mixin(_ObjC!
-    q{
+	q{
 		id str = [ObjC.NSString stringWithString: "Hello, world!"];
 		int length = [str length];
 		assert(length == "Hello, world!".length);
