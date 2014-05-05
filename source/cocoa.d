@@ -609,7 +609,7 @@ struct NSAutoreleasePool
 	static NSAutoreleasePool opCall()
 	{
 		NSAutoreleasePool result;
-		result.mAp = ObjC.NSAutoreleasePool.c.i!("new", CFTypeRef)();
+		result.mAp = ObjC.NSAutoreleasePool.s!("new", CFTypeRef)();
 		return result;
 	}
 
@@ -627,7 +627,7 @@ unittest
 unittest
 {
 	auto pool = NSAutoreleasePool();
-	ObjCObj arr = ObjC.NSArray.c.i!("arrayWithObjects_", ObjCObj)("123", "456", "789", null);
+	ObjCObj arr = ObjC.NSArray.s!("arrayWithObjects_", ObjCObj)("123", "456", "789", null);
 	CFStringRef str = CoreFoundation.CFStringCreateByCombiningStrings(cast(CFTypeRef)CoreFoundation.kCFAllocatorDefault, arr._base.mObj, CFStringWithString(","));
 	assert(StringWithCFString(str) == "123,456,789");
 	CoreFoundation.CFRelease(str);
@@ -636,11 +636,11 @@ unittest
 unittest
 {
 	auto pool = NSAutoreleasePool();
-	ObjCObj s1 = ObjC.NSString.c.i!("alloc", ObjCObj)();
+	ObjCObj s1 = ObjC.NSString.s!("alloc", ObjCObj)();
 	s1 = s1.i!"init"();
-	ObjCObj s2 = ObjC.NSString.c.i!("alloc", ObjCObj)().i!("initWithString_", ObjCObj)("hi");
-	ObjCObj s3 = ObjC.NSString.c.i!("alloc", ObjCObj)().init_();
-	ObjCObj arr = ObjC.NSArray.c.i!("alloc", ObjCObj)().initWithObjects_(s1, s2, s3, null);
+	ObjCObj s2 = ObjC.NSString.s!("alloc", ObjCObj)().i!("initWithString_", ObjCObj)("hi");
+	ObjCObj s3 = ObjC.NSString.s!("alloc", ObjCObj)().init_();
+	ObjCObj arr = ObjC.NSArray.s!("alloc", ObjCObj)().initWithObjects_(s1, s2, s3, null);
 	s1 = arr.componentsJoinedByString_(":");
 	assert(StringWithCFString(s1._base.mObj) == ":hi:");
 }
@@ -734,7 +734,11 @@ private class Expression
 			}
 		}
 
-		// Deduce type of target
+        deduceTarget(exprs);
+	}
+
+	private final void deduceTarget(Expression[] exprs) pure
+	{
 		if (_target.containsOnlyTag())
 		{
 			Expression targetExpr = exprs[_target.tagInString()];
@@ -742,9 +746,14 @@ private class Expression
 			{
 				targetExpr._retType = "id";
 			}
+
+			_targetType = targetExpr._retType;
+			_targetIsClass = "true";
 		}
 		else
 		{
+			_targetType = "mixin(TargetTypeFromString!`" ~ _target.strip() ~ "`)";
+			_targetIsClass = "mixin(TargetFromStringIsClass!`" ~ _target.strip() ~ "`)";
 			_target = "mixin(TargetFromString!`" ~ _target.strip() ~ "`)";
 		}
 	}
@@ -752,7 +761,7 @@ private class Expression
 	string eval(Expression[] exprs) pure
 	{
 		assert(_retType.length);
-		string result = "(" ~ _target ~ `).i!("` ~ _selector ~ `", ` ~ _retType ~")(";
+		string result = `invokeSelector!("` ~ _selector ~ `", ` ~ _retType ~ `, ` ~ _targetIsClass ~ `, ` ~ _targetType ~ `)(` ~ _target ~ `, `;
 		result ~= _arguments.join(",");
 		result ~= ")";
 		return result;
@@ -760,8 +769,19 @@ private class Expression
 
 	string _selector;
 	string _target;
+	string _targetType;
+	string _targetIsClass;
 	string[] _arguments;
 	string _retType;
+}
+
+RetType invokeSelector(string name, RetType, bool isStatic, TargetType, RealTarget, Args...)(RealTarget target, Args args)
+{
+	static if (is(TargetType == _ObjcClass!(className), string className))
+	{
+		debug alias Checker = SelectorTypeCheck!(name, isStatic, className, Args);
+	}
+	return target.i!(name, RetType, Args)(args);
 }
 
 private string lastWordInString(string s) pure
@@ -799,14 +819,14 @@ private string assignmentTypeFromString(string s) pure
 		return `ReturnType!(
 			delegate ()
 			{
-				static if (__traits(compiles, mixin("delegate void(){ struct _t { ` ~ s ~ `; }}()")))
+				static if (__traits(compiles, mixin("(){ struct _t { ` ~ s ~ `; }}()")))
 				{
 					mixin("struct _t { ` ~ s ~ `; }");
 					return FieldTypeTuple!_t[0].init;
 				}
 				else
 				{
-					mixin("return(` ~ s ~ `);");
+					mixin("return ` ~ s ~ `;");
 				}
 			}
 		)`;
@@ -821,7 +841,7 @@ private string targetFromString(string s) pure
 	{
 		static if (__traits(compiles, mixin("(){ return (` ~ s ~ `); }()")))
 		{
-			mixin("return (` ~ s ~ `);");
+			mixin("return ` ~ s ~ `;");
 		}
 		else
 		{
@@ -830,7 +850,25 @@ private string targetFromString(string s) pure
 	}()`;
 }
 
+private string targetTypeFromString(string s) pure
+{
+	return `ReturnType!(()
+		{
+			static if (is(` ~ s ~ `))
+			{
+				mixin("return (` ~ s ~ `).init;");
+			}
+			else
+			{
+				mixin("return ` ~ s ~ `;");
+			}
+		}
+	)`;
+}
+
 enum TargetFromString(string s) = targetFromString(s);
+enum TargetTypeFromString(string s) = targetTypeFromString(s);
+enum TargetFromStringIsClass(string s) = `is(` ~ s ~ `)`;
 
 private string castTypeFromString(string s) pure
 {
@@ -954,10 +992,11 @@ private class _ObjcBase
 	private bool _needsRelease = false;
 }
 
-debug private struct SelectorTypeCheck(string selectorName, string className, Args...)
+debug private struct SelectorTypeCheck(string selectorName, bool isStaticMethod, string className, Args...)
 {
     shared static this()
     {
+		//writeln("Checking types for selector: ", isStaticMethod ? "+" : "-", " ", className, "::", selectorName, Args.stringof);
 		// TODO: perform type checks here
     }
 }
@@ -972,11 +1011,15 @@ class _ObjcClass(string className) : _ObjcBase
 		}
 	}
 
-    RetType i(string name, RetType = ObjCObj, Args...)(Args args)
+	RetType i(string name, RetType = ObjCObj, Args...)(Args args)
     {
-        debug alias Checker = SelectorTypeCheck!(name, className, Args);
         return super.i!(name, RetType, Args)(args);
     }
+
+	static RetType s(string name, RetType = ObjCObj, Args...)(Args args)
+	{
+		return c.i!(name, RetType, Args)(args);
+	}
 
 	static _ObjCClass objcClass()
 	{
@@ -1064,9 +1107,7 @@ private extern (C) void _deallocImpl(T)(CFTypeRef o, SEL m)
 
 private extern (C) auto _methodForwarder(T, string Func, Args...)(CFTypeRef o, SEL m, Args args)
 {
-//	writeln("Forwarding call ", Func);
 	T obj = cast(T)dObjectAssociatedWithObjCProxy(o);
-//	writeln("Ok, calling now! ", cast(void*)obj);
 	mixin("return obj." ~ Func ~ "(args);");
 }
 
@@ -1133,7 +1174,7 @@ mixin template RegisterObjCClass()
 
 unittest
 {
-	ObjC.NSArray arr = ObjC.NSArray.c.i!("arrayWithObjects_", ObjC.NSArray)("Hello", "world!", null);
+	ObjC.NSArray arr = ObjC.NSArray.s!("arrayWithObjects_", ObjC.NSArray)("Hello", "world!", null);
 	ObjC.NSString str = arr.i!("componentsJoinedByString_", ObjC.NSString)(", ");
 	uint length = str.i!("length", uint)();
 	assert(length == "Hello, world!".length);
