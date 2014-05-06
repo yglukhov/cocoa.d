@@ -337,9 +337,9 @@ private void registerUnregisteredClasses()
 		registerUnregisteredClasses();
 }
 
-CFStringRef CFStringWithString(const char[] s)
+CFStringRef CFStringCreateWithString(const char[] s)
 {
-	CFTypeRef result = CoreFoundation.CFStringCreateWithBytes(null, cast(const UInt8 *)s.ptr, s.length, CFStringEncoding.kCFStringEncodingUTF8, false);
+	CFStringRef result = CoreFoundation.CFStringCreateWithBytes(null, cast(const UInt8 *)s.ptr, s.length, CFStringEncoding.kCFStringEncodingUTF8, false);
 	assert(result);
 	return result;
 }
@@ -363,7 +363,9 @@ auto DTypeToObjcType(T)(T a)
 
 auto DTypeToObjcType(string s)
 {
-	return CFStringWithString(s);
+    CFStringRef res = CFStringCreateWithString(s);
+    ObjCBase!CFStringRef(res).i!("autorelease", void)();
+	return res;
 }
 
 auto DTypeToObjcType(ObjCObj a)
@@ -387,16 +389,6 @@ auto DTypeToObjcType(Variant a)
 	const void* res = a.get!(ObjCObj)._base.mObj;
 	writeln("Converting variant done");
 	return res;
-}
-
-RetType ObjCTypeToDType(RetType, bool needsRetain)(void* a)
-{
-	return cast(RetType)a;
-}
-
-ObjCObj ObjCTypeToDType(RetType : ObjCObj, bool needsRetain)(void* a)
-{
-	return ObjCObj(a, needsRetain);
 }
 
 struct ObjCSelector(string name)
@@ -491,9 +483,9 @@ struct ObjCBase(T)
 			enum superInfix = "";
 		}
 
-		static if (is (RetType == ObjCObj))
+		static if (is (RetType == id))
 		{
-			return ObjCObj(i!(name, CFTypeRef)(args), selectorReturnsAutoreleasedValue, name);
+			return id(i!(name, CFTypeRef)(args), selectorReturnsAutoreleasedValue, name);
 		}
 		else static if (is (RetType : _ObjcBase))
 		{
@@ -534,13 +526,13 @@ struct ObjCBase(T)
 		}
 		else static if (is(RetType : string))
 		{
-			ObjCObj r = i!(name, ObjCObj)(args);
+			id r = i!(name, id)(args);
 			return StringWithCFString(r._base.mObj);
 		}
 		else static if (false && is (RetType == Variant))
 		{
 			mixin(expandConvertedArgs("auto result = Dobjc_msgSend" ~ superInfix ~ "!(CFTypeRef, selectorArgsCount)(target, ObjCSelector!(name).selector", ");", "DTypeToObjcType", args.length));
-			ObjCObj r = ObjCObj(result, selectorReturnsAutoreleasedValue, name);
+			id r = id(result, selectorReturnsAutoreleasedValue, name);
 			return Variant(r);
 		}
 	}
@@ -575,7 +567,7 @@ struct ObjCObj
 	this(this)
 	{
 //		writefln("Copying retaining object %X, sel: %s", _base.mObj, _sel);
-//		Cocoa.NSLog(CFStringWithString("%@"), _base.mObj);
+//		Cocoa.NSLog(CFStringCreateWithString("%@"), _base.mObj);
 		_retain();
 	}
 
@@ -583,7 +575,7 @@ struct ObjCObj
 	{
 //		writefln("Releasing object %X, sel: %s", _base.mObj, _sel);
 
-	//	Cocoa.NSLog(CFStringWithString("s(%@)"), _base.mObj);
+	//	Cocoa.NSLog(CFStringCreateWithString("s(%@)"), _base.mObj);
 		_release();
 	}
 
@@ -603,12 +595,12 @@ struct ObjCObj
 
 	private void _retain()
 	{
-//		if (_base.mObj) CoreFoundation.CFRetain(_base.mObj);
+		if (_base.mObj) CoreFoundation.CFRetain(_base.mObj);
 	}
 
 	private void _release()
 	{
-//		if (_base.mObj) CoreFoundation.CFRelease(_base.mObj);
+		if (_base.mObj) CoreFoundation.CFRelease(_base.mObj);
 	}
 
 	RetType i(string name, RetType = ObjCObj, Args...)(Args args)
@@ -626,7 +618,7 @@ struct ObjCObj
 
 	auto init_()
 	{
-		return i!("init", ObjCObj)();
+		return i!("init")();
 	}
 }
 
@@ -666,7 +658,7 @@ struct NSAutoreleasePool
 
 unittest
 {
-	CFStringRef str = CFStringWithString("asdf");
+	CFStringRef str = CFStringCreateWithString("asdf");
 	const(char)[] back = StringWithCFString(str);
 	assert(back == "asdf");
 	CoreFoundation.CFRelease(str);
@@ -675,8 +667,8 @@ unittest
 unittest
 {
 	auto pool = NSAutoreleasePool();
-	ObjCObj arr = ObjC.NSArray.s!("arrayWithObjects_", ObjCObj)("123", "456", "789", null);
-	CFStringRef str = CoreFoundation.CFStringCreateByCombiningStrings(cast(CFTypeRef)CoreFoundation.kCFAllocatorDefault, arr._base.mObj, CFStringWithString(","));
+	id arr = ObjC.NSArray.s!"arrayWithObjects_"("123", "456", "789", null);
+	CFStringRef str = CoreFoundation.CFStringCreateByCombiningStrings(cast(CFTypeRef)CoreFoundation.kCFAllocatorDefault, arr._base.mObj, CFStringCreateWithString(","));
 	assert(StringWithCFString(str) == "123,456,789");
 	CoreFoundation.CFRelease(str);
 }
@@ -684,11 +676,11 @@ unittest
 unittest
 {
 	auto pool = NSAutoreleasePool();
-	ObjCObj s1 = ObjC.NSString.s!("alloc", ObjCObj)();
+	id s1 = ObjC.NSString.s!"alloc"();
 	s1 = s1.i!"init"();
-	ObjCObj s2 = ObjC.NSString.s!("alloc", ObjCObj)().i!("initWithString_", ObjCObj)("hi");
-	ObjCObj s3 = ObjC.NSString.s!("alloc", ObjCObj)().init_();
-	ObjCObj arr = ObjC.NSArray.s!("alloc", ObjCObj)().initWithObjects_(s1, s2, s3, null);
+	id s2 = ObjC.NSString.s!"alloc"().i!"initWithString_"("hi");
+	id s3 = ObjC.NSString.s!"alloc"().init_();
+	id arr = ObjC.NSArray.s!"alloc"().initWithObjects_(s1, s2, s3, null);
 	s1 = arr.componentsJoinedByString_(":");
 	assert(StringWithCFString(s1._base.mObj) == ":hi:");
 }
@@ -1084,18 +1076,18 @@ class _ObjcClass(string className) : _ObjcBase
 {
 	template opDispatch(string name)
 	{
-		RetType opDispatch(RetType = ObjCObj, Args...)(Args args)
+		RetType opDispatch(RetType = id, Args...)(Args args)
 		{
 			return i!(name, RetType, Args)(args);
 		}
 	}
 
-	RetType i(string name, RetType = ObjCObj, Args...)(Args args)
+	RetType i(string name, RetType = id, Args...)(Args args)
 	{
 		return super.i!(name, RetType, Args)(args);
 	}
 
-	static RetType s(string name, RetType = ObjCObj, Args...)(Args args)
+	static RetType s(string name, RetType = id, Args...)(Args args)
 	{
 		return c.i!(name, RetType, Args)(args);
 	}
